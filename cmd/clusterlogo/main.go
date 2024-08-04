@@ -20,22 +20,35 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/Golansami125/clusterlogo/pkg/kube_collection"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 func main() {
 	// Kube Logic ------------- move out of main once neo4j logic done
 	// Create Kubernetes client
-	config, err := rest.InClusterConfig()
+	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
-		panic(err.Error())
+		fmt.Printf("error getting user home dir: %v\n", err)
+		os.Exit(1)
 	}
-	clientset, err := kubernetes.NewForConfig(config)
+	kubeConfigPath := filepath.Join(userHomeDir, ".kube", "config")
+	fmt.Printf("Using kubeconfig: %s\n", kubeConfigPath)
+
+	kubeConfig, err := clientcmd.BuildConfigFromFlags("", kubeConfigPath)
 	if err != nil {
-		panic(err.Error())
+		fmt.Printf("error getting Kubernetes config: %v\n", err)
+		os.Exit(1)
+	}
+
+	clientset, err := kubernetes.NewForConfig(kubeConfig)
+	if err != nil {
+		fmt.Printf("error getting Kubernetes clientset: %v\n", err)
+		os.Exit(1)
 	}
 
 	// Create  maps to store resources
