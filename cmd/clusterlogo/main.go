@@ -1,3 +1,21 @@
+/* Existing tests
+- Unused Service Accounts
+- Use of Default Service Account
+*/
+
+/*
+	Logic to add
+
+1. Check API server logs to see if I can figure out when actions were last done by different entities (potentially even cloud provider logs?)
+2. Check for pods with bind/escalate/impersonate - dangerous verbs
+3. Check for privileged containers, host mounts, different breakout techniques etc
+4. Add project ID for GCP, subscription for Azure
+5. Add log parsing for AWS
+6. Add neo4j logic
+
+!!!??? Maybe map permissions as nodes and users/SAs as attributes with a "last used" date
+*/
+
 package main
 
 import (
@@ -9,6 +27,7 @@ import (
 )
 
 func main() {
+	// Kube Logic ------------- move out of main once neo4j logic done
 	// Create Kubernetes client
 	config, err := rest.InClusterConfig()
 	if err != nil {
