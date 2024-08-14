@@ -1,12 +1,22 @@
-version: "3"
+version: '3'
 
 services:
-  neo4j:
-    image: neo4j:4.4
+  db:
+    image: mysql:8.0
+    container_name: mysql_db
     environment:
-      NEO4J_AUTH: none
+      MYSQL_ROOT_PASSWORD: mysql
+      MYSQL_DATABASE: clusterlogo
+      MYSQL_USER: mysql
+      MYSQL_PASSWORD: mysql
     ports:
-      - 7474:7474
-      - 7687:7687
+      - 3306:3306
     volumes:
-      - ./data:/data
+      - mysql_data:/var/lib/mysql
+      - ./create_tables.sql:/docker-entrypoint-initdb.d/create_tables.sql
+    command: --init-file /docker-entrypoint-initdb.d/create_tables.sql
+
+volumes:
+  mysql_data:
+
+# mysql -u mysql -p -h 127.0.0.1

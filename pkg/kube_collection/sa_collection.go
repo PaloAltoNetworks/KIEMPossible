@@ -2,18 +2,25 @@ package kube_collection
 
 import (
 	"context"
-	"encoding/json"
+	"database/sql"
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
-func CollectServiceAccounts(client *kubernetes.Clientset, serviceAccounts *map[string]interface{}) error {
+func CollectServiceAccounts(client *kubernetes.Clientset, db *sql.DB) error {
 	nsList, err := client.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
+
+	// Prepare the SQL statement to insert service accounts
+	stmt, err := db.Prepare("INSERT INTO permission (entity_name) VALUES (?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
 
 	for _, ns := range nsList.Items {
 		nsName := ns.Name
@@ -24,20 +31,18 @@ func CollectServiceAccounts(client *kubernetes.Clientset, serviceAccounts *map[s
 			return err
 		}
 
-		// Iterate through service accounts and build key-value pairs
+		// Iterate through service accounts and insert into the database
 		for _, sa := range saList.Items {
 			saName := sa.Name
-			saJSON, err := json.Marshal(sa)
+			key := fmt.Sprintf("%s:%s", nsName, saName)
+
+			// Insert the service account into the database
+			_, err = stmt.Exec(key)
 			if err != nil {
 				return err
 			}
-			var jsonValue interface{}
-			err = json.Unmarshal(saJSON, &jsonValue)
-			if err != nil {
-				return err
-			}
-			key := fmt.Sprintf("%s-%s", nsName, saName)
-			(*serviceAccounts)[key] = jsonValue
+
+			fmt.Printf("Inserted service account %s into the database\n", key)
 		}
 	}
 
