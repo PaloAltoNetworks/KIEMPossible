@@ -2,14 +2,11 @@ package kube_collection
 
 import (
 	"context"
-	"encoding/json"
-	"strings"
-
-	"database/sql"
 	"fmt"
 
+	"database/sql"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -21,27 +18,140 @@ type ResourceType struct {
 	SubResource  string
 	Verb         string
 	Namespaced   bool
+	ResourceName string
 }
 
-func CollectRoleBindings(client *kubernetes.Clientset, roleBindings *map[string]interface{}) error {
-	rbList, err := client.RbacV1().RoleBindings("").List(context.TODO(), metav1.ListOptions{})
+func CollectRoleBindings(client *kubernetes.Clientset, db *sql.DB, clusterRoles map[string]*rbacv1.ClusterRole, roles map[string]*rbacv1.Role) error {
+	// Get a list of all namespaces in the cluster
+	namespaces, err := client.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
 
-	for _, rb := range rbList.Items {
-		rbJSON, err := json.Marshal(rb)
-		if err != nil {
-			return err
-		}
-		var jsonValue interface{}
-		err = json.Unmarshal(rbJSON, &jsonValue)
-		if err != nil {
-			return err
-		}
-		(*roleBindings)[rb.Name] = jsonValue
+	// Get a list of all resource types and their API groups
+	resourceTypes, err := GetResourceTypesAndAPIGroups(client)
+	if err != nil {
+		return err
 	}
 
+	stmt, err := db.Prepare(`
+                INSERT INTO permission (entity_name, entity_type, api_group, resource_type, verb, permission_scope, permission_source, permission_source_type, permission_binding, permission_binding_type, last_used_time, last_used_resource)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE last_used_time = last_used_time AND last_used_resource = last_used_resource
+        `)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, namespace := range namespaces.Items {
+		rbList, err := client.RbacV1().RoleBindings(namespace.Name).List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			return err
+		}
+
+		for _, rb := range rbList.Items {
+			for _, subject := range rb.Subjects {
+				entityName := subject.Name
+				if subject.Kind == "ServiceAccount" {
+					entityName = fmt.Sprintf("%s:%s", namespace.Name, subject.Name)
+				}
+
+				var role *rbacv1.Role
+				var clusterRole *rbacv1.ClusterRole
+				if rb.RoleRef.Kind == "Role" {
+					key := fmt.Sprintf("%s/%s", namespace.Name, rb.RoleRef.Name)
+					role = roles[key]
+				} else if rb.RoleRef.Kind == "ClusterRole" {
+					clusterRole = clusterRoles[rb.RoleRef.Name]
+				} else {
+					fmt.Printf("Unsupported RoleRef kind: %s\n", rb.RoleRef.Kind)
+					continue
+				}
+
+				if role != nil {
+					processRoleRules(stmt, entityName, subject.Kind, role.Rules, resourceTypes, namespace.Name, role.Name, rb.Name)
+				} else if clusterRole != nil {
+					processClusterRoleRules(stmt, entityName, subject.Kind, clusterRole.Rules, resourceTypes, clusterRole.Name, rb.Name)
+				}
+			}
+		}
+	}
+	fmt.Printf("Inserted RoleBinding Permissions to database\n")
+	return nil
+}
+
+func processRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rbacv1.PolicyRule, resourceTypes []ResourceType, namespace, roleName, roleBindingName string) error {
+	for _, rule := range rules {
+		resourceNames := rule.ResourceNames
+		for _, apiGroup := range rule.APIGroups {
+			for _, resource := range rule.Resources {
+				for _, verb := range rule.Verbs {
+					resourceTypes, err := FlattenWildcards(resourceTypes, verb, resource, apiGroup)
+					if err != nil {
+						return err
+					}
+
+					for _, resourceType := range resourceTypes {
+						if len(resourceNames) > 0 {
+							for _, resourceName := range resourceNames {
+								scope := fmt.Sprintf("%s/%s", resourceType.ResourceType, resourceName)
+								_, err := stmt.Exec(entityName, entityType, resourceType.APIGroup, resourceType.ResourceType, verb, scope, roleName, "Role", roleBindingName, "RoleBinding", nil, nil)
+								if err != nil {
+									return err
+								}
+							}
+						} else {
+							scope := namespace
+							if !resourceType.Namespaced {
+								scope = "cluster-wide"
+							}
+							_, err := stmt.Exec(entityName, entityType, resourceType.APIGroup, resourceType.ResourceType, verb, scope, roleName, "Role", roleBindingName, "RoleBinding", nil, nil)
+							if err != nil {
+								return err
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func processClusterRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rbacv1.PolicyRule, resourceTypes []ResourceType, clusterRoleName, roleBindingName string) error {
+	for _, rule := range rules {
+		resourceNames := rule.ResourceNames
+
+		for _, apiGroup := range rule.APIGroups {
+			for _, resource := range rule.Resources {
+				for _, verb := range rule.Verbs {
+					resourceTypes, err := FlattenWildcards(resourceTypes, verb, resource, apiGroup)
+					if err != nil {
+						return err
+					}
+
+					for _, resourceType := range resourceTypes {
+						if len(resourceNames) > 0 {
+							for _, resourceName := range resourceNames {
+								scope := fmt.Sprintf("%s/%s", resourceType.ResourceType, resourceName)
+								_, err := stmt.Exec(entityName, entityType, resourceType.APIGroup, resourceType.ResourceType, verb, scope, clusterRoleName, "ClusterRole", roleBindingName, "ClusterRoleBinding", nil, nil)
+								if err != nil {
+									return err
+								}
+							}
+						} else {
+							scope := "cluster-wide"
+							_, err := stmt.Exec(entityName, entityType, resourceType.APIGroup, resourceType.ResourceType, verb, scope, clusterRoleName, "ClusterRole", roleBindingName, "ClusterRoleBinding", nil, nil)
+							if err != nil {
+								return err
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -58,16 +168,14 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 	}
 
 	// Get a list of all resource types and their API groups
-	resourceTypes, err := getResourceTypesAndAPIGroups(client)
+	resourceTypes, err := GetResourceTypesAndAPIGroups(client)
 	if err != nil {
 		return err
 	}
-
-	// Prepare the SQL statement to insert permissions
 	stmt, err := db.Prepare(`
-        INSERT INTO permission (entity_name, entity_type, api_group, resource_type, verb, permission_scope, last_used_time, last_used_resource)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE last_used_time = last_used_time
+        INSERT INTO permission (entity_name, entity_type, api_group, resource_type, verb, permission_scope, permission_source, permission_source_type, permission_binding, permission_binding_type, last_used_time, last_used_resource)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE last_used_time = last_used_time AND last_used_resource = last_used_resource
     `)
 	if err != nil {
 		return err
@@ -88,32 +196,38 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 			}
 
 			for _, rule := range clusterRole.Rules {
+				resourceNames := rule.ResourceNames
 				for _, apiGroup := range rule.APIGroups {
 					for _, resource := range rule.Resources {
 						for _, verb := range rule.Verbs {
-							resourceTypes, err := flattenWildcards(resourceTypes, verb, resource, apiGroup)
+							resourceTypes, err := FlattenWildcards(resourceTypes, verb, resource, apiGroup)
 							if err != nil {
 								return err
 							}
 							for _, resourceType := range resourceTypes {
 
-								if resourceType.Namespaced {
+								if len(resourceNames) > 0 {
+									for _, resourceName := range resourceNames {
+										scope := fmt.Sprintf("%s/%s", resourceType.ResourceType, resourceName)
+										_, err := stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, resourceType.ResourceType, verb, scope, clusterRole.Name, "ClusterRole", crb.Name, "ClusterRoleBinding", nil, nil)
+										if err != nil {
+											return err
+										}
+									}
+								} else if resourceType.Namespaced {
 									for _, namespace := range namespaces.Items {
-										_, err = stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, resourceType.ResourceType, resourceType.Verb, namespace.Name, nil, nil)
+										_, err = stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, resourceType.ResourceType, resourceType.Verb, namespace.Name, clusterRole.Name, "ClusterRole", crb.Name, "ClusterRoleBinding", nil, nil)
 										if err != nil {
 											return err
 										}
 
-										fmt.Printf("Inserted permission for %s/%s: %s %s/%s in namespace %s\n", subject.Kind, entityName, resourceType.Verb, resourceType.APIGroup, resourceType.ResourceType, namespace.Name)
 									}
 								} else {
 
-									_, err = stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, resourceType.ResourceType, resourceType.Verb, "cluster-wide", nil, nil)
+									_, err = stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, resourceType.ResourceType, resourceType.Verb, "cluster-wide", clusterRole.Name, "ClusterRole", crb.Name, "ClusterRoleBinding", nil, nil)
 									if err != nil {
 										return err
 									}
-
-									//fmt.Printf("Inserted permission for %s/%s: %s %s/%s in cluster-wide scope\n", subject.Kind, entityName, resourceType.Verb, resourceType.APIGroup, resourceType.ResourceType)
 								}
 							}
 						}
@@ -122,155 +236,6 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 			}
 		}
 	}
-	fmt.Printf("Inserted Permissions to database")
+	fmt.Printf("Inserted ClusterRoleBinding Permissions to database\n")
 	return nil
-}
-
-func getResourceTypesAndAPIGroups(client *kubernetes.Clientset) ([]ResourceType, error) {
-	resourceTypes := []ResourceType{}
-
-	apiResourceList, err := client.Discovery().ServerPreferredResources()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, apiResourceGroup := range apiResourceList {
-		groupVersion, err := schema.ParseGroupVersion(apiResourceGroup.GroupVersion)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, apiResource := range apiResourceGroup.APIResources {
-			apiGroup := groupVersion.Group
-			if apiGroup == "" {
-				apiGroup = "v1"
-			} else {
-				apiGroup = fmt.Sprintf("%s/%s", apiGroup, groupVersion.Version)
-			}
-
-			resourceTypes = append(resourceTypes, ResourceType{
-				APIGroup:     apiGroup,
-				ResourceType: apiResource.Name,
-				Namespaced:   apiResource.Namespaced,
-			})
-
-		}
-	}
-
-	return resourceTypes, nil
-}
-
-func flattenWildcards(resourceTypes []ResourceType, verb, resource, apiGroup string) ([]ResourceType, error) {
-	var flattenedResourceTypes []ResourceType
-
-	if verb == "*" && resource == "*" {
-		// Return all possible combinations of verbs and resource types
-		for _, rt := range resourceTypes {
-			verbs, err := getVerbsForResourceType(rt.ResourceType)
-			if err != nil {
-				return nil, err
-			}
-
-			for _, v := range verbs {
-				flattenedResourceTypes = append(flattenedResourceTypes, ResourceType{
-					APIGroup:     rt.APIGroup,
-					ResourceType: rt.ResourceType,
-					Verb:         v,
-					Namespaced:   rt.Namespaced,
-				})
-			}
-		}
-	} else if verb == "*" {
-		// Flatten the verb to all possible verbs for the given resource type
-		for _, rt := range resourceTypes {
-			if (rt.ResourceType == resource || resource == "*") && (resource == "*") {
-				// Get the list of verbs for this resource type
-				verbs, err := getVerbsForResourceType(rt.ResourceType)
-				if err != nil {
-					return nil, err
-				}
-
-				for _, v := range verbs {
-					flattenedResourceTypes = append(flattenedResourceTypes, ResourceType{
-						APIGroup:     rt.APIGroup,
-						ResourceType: rt.ResourceType,
-						Verb:         v,
-						Namespaced:   rt.Namespaced,
-					})
-				}
-			}
-		}
-	} else if resource == "*" {
-		for _, rt := range resourceTypes {
-			if rt.APIGroup == apiGroup || apiGroup == "" || apiGroup == "*" {
-				flattenedResourceTypes = append(flattenedResourceTypes, ResourceType{
-					APIGroup:     rt.APIGroup,
-					ResourceType: rt.ResourceType,
-					Verb:         verb,
-					Namespaced:   rt.Namespaced,
-				})
-			}
-		}
-	} else {
-		resourceParts := strings.Split(resource, "/")
-		parentResource := resourceParts[0]
-		subResource := ""
-		if len(resourceParts) > 1 {
-			subResource = resourceParts[1]
-		}
-
-		if apiGroup == "" || apiGroup == "*" {
-			for _, rt := range resourceTypes {
-				if subResource != "" {
-					parentResource = parentResource + "/" + subResource
-					flattenedResourceTypes = append(flattenedResourceTypes, ResourceType{
-						APIGroup:     rt.APIGroup,
-						ResourceType: parentResource,
-						Verb:         verb,
-						Namespaced:   rt.Namespaced,
-					})
-					break
-				}
-			}
-		} else {
-			for _, rt := range resourceTypes {
-				if rt.APIGroup == apiGroup && rt.ResourceType == parentResource {
-					if subResource != "" {
-						parentResource = parentResource + "/" + subResource
-						flattenedResourceTypes = append(flattenedResourceTypes, ResourceType{
-							APIGroup:     rt.APIGroup,
-							ResourceType: parentResource,
-							Verb:         verb,
-							Namespaced:   rt.Namespaced,
-						})
-						break
-					}
-				}
-			}
-		}
-	}
-	return flattenedResourceTypes, nil
-}
-
-func getVerbsForResourceType(resourceType string) ([]string, error) {
-	// Define a map of resource types and their corresponding verbs
-	resourceVerbsMap := map[string][]string{
-		"certificatesigningrequests": {"approve", "create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"},
-		"signers":                    {"sign", "create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"},
-		"roles":                      {"bind", "escalate", "create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"},
-		"clusterroles":               {"bind", "escalate", "create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"},
-		"serviceaccounts":            {"impersonate", "create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"},
-		// Add more resource types and their verbs here
-	}
-
-	// Define a list of generic verbs
-	genericVerbs := []string{"create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"}
-
-	// Check if the resource type is in the map
-	if verbs, ok := resourceVerbsMap[resourceType]; ok {
-		return verbs, nil
-	}
-
-	// If the resource type is not in the map, return the generic verbs
-	return genericVerbs, nil
 }

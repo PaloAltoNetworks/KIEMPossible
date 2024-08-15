@@ -1,18 +1,14 @@
 /*
-	Logic to add
-
-1. Check API server logs to see if I can figure out when actions were last done by different entities (potentially even cloud provider logs?)
-2. Add DB logic
-
-Start with just SAs - very beta
-
-- I only care about permissions. Therefore, I need to go through all the CRB and RBs and extract the entities and all of their permissions. Go through based on subjects.kind (in yaml/json)
 - Need to check re cloud providers - will this get all the entities or is there more mapping with things like annotations?
 
-- Flattened - verbs that only work for specific resources need to be documented
-- Flatten everything to subresources (maybe during the "over-permissive" check actions over every subresource and the parent resoource) - e.g. given get on pods when only need get on pods/status
-- Add the rolebindings check - if type clusterrole.... if type role..... - everything is to be namespaced
+- Flattened - the verbs that only work for specific resources needs to be documented
+- Flatten everything to subresources (maybe during the "over-permissive" check actions over every subresource and the parent resource) - e.g. given get on pods when only need get on pods/status
+- Docs - write what it accounts for - stuff like resourceNames, all permissions are individually handled (some may appear twice for the same source if given by different granters). Permissions given specifically to subresources are shown as such in the db
 
+
+
+- Check re aggregated roles
+- Add check for stale resource? SAs with no permissions, roles/clusterroles with no bindings?
 
 
 - Talk name:

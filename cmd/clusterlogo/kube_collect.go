@@ -36,10 +36,8 @@ func ConnectAndCollect() map[string]string {
 	}
 
 	// Create  maps to store resources
-	roles := make(map[string]interface{})
+	roles := make(map[string]*rbacv1.Role)
 	clusterRoles := make(map[string]*rbacv1.ClusterRole)
-	roleBindings := make(map[string]interface{})
-	//clusterRoleBindings := make(map[string]interface{})
 	issues := make(map[string]string)
 
 	// Collect resources
@@ -52,16 +50,6 @@ func ConnectAndCollect() map[string]string {
 	if err != nil {
 		panic(err.Error())
 	}
-
-	err = kube_collection.CollectRoleBindings(clientset, &roleBindings)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	// err = kube_collection.CollectClusterRoleBindings(clientset, &clusterRoleBindings)
-	// if err != nil {
-	// 	panic(err.Error())
-	// }
 
 	// Create DB connection
 	DB, err := auth_handling.DBConnect()
@@ -78,7 +66,12 @@ func ConnectAndCollect() map[string]string {
 
 	err = kube_collection.CollectClusterRoleBindings(clientset, DB, clusterRoles)
 	if err != nil {
-		fmt.Println("Error storing permissions in the database:", err)
+		fmt.Println("Error storing clusterRoleBindings permissions in the database:", err)
+	}
+
+	err = kube_collection.CollectRoleBindings(clientset, DB, clusterRoles, roles)
+	if err != nil {
+		fmt.Println("Error storing RoleBindings permissions in the database:", err)
 	}
 
 	return issues
