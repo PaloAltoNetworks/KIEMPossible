@@ -7,8 +7,8 @@
 
 
 
-- Check re aggregated roles
-- Add check for stale resource? SAs with no permissions, roles/clusterroles with no bindings?
+- Check re aggregated roles - maybe add a boolean column if yay/nay? (https://pkg.go.dev/k8s.io/api/rbac/v1#ClusterRole)
+- Add check for stale resource? roles/clusterroles with no bindings?
 
 
 - Talk name:
@@ -18,16 +18,9 @@ Ready? Set... ClusterLoGo! Exploring Least Privileged Through Kubernetes Logs
 
 package main
 
-import (
-	"fmt"
-)
-
 func main() {
-	//AuthMain()
-	kube_issues := ConnectAndCollect()
-	for key, value := range kube_issues {
-		fmt.Printf("The following issues were found:\n%s: %s\n", key, value)
-	}
+	AuthMain()
+	KubeCollect()
 }
 
 /* Self-Managed

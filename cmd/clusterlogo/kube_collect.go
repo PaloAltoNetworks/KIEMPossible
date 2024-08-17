@@ -3,33 +3,14 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/Golansami125/clusterlogo/pkg/auth_handling"
 	"github.com/Golansami125/clusterlogo/pkg/kube_collection"
 	rbacv1 "k8s.io/api/rbac/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
-func ConnectAndCollect() map[string]string {
-	// Kube Logic ------------- move out of main once db logic done
-	// Create Kubernetes client
-	userHomeDir, err := os.UserHomeDir()
-	if err != nil {
-		fmt.Printf("error getting user home dir: %v\n", err)
-		os.Exit(1)
-	}
-	kubeConfigPath := filepath.Join(userHomeDir, ".kube", "config")
-	fmt.Printf("Using kubeconfig: %s\n", kubeConfigPath)
-
-	kubeConfig, err := clientcmd.BuildConfigFromFlags("", kubeConfigPath)
-	if err != nil {
-		fmt.Printf("error getting Kubernetes config: %v\n", err)
-		os.Exit(1)
-	}
-
-	clientset, err := kubernetes.NewForConfig(kubeConfig)
+func KubeCollect() {
+	clientset, err := auth_handling.KubeConnect()
 	if err != nil {
 		fmt.Printf("error getting Kubernetes clientset: %v\n", err)
 		os.Exit(1)
@@ -38,7 +19,6 @@ func ConnectAndCollect() map[string]string {
 	// Create  maps to store resources
 	roles := make(map[string]*rbacv1.Role)
 	clusterRoles := make(map[string]*rbacv1.ClusterRole)
-	issues := make(map[string]string)
 
 	// Collect resources
 	err = kube_collection.CollectRoles(clientset, &roles)
@@ -73,7 +53,5 @@ func ConnectAndCollect() map[string]string {
 	if err != nil {
 		fmt.Println("Error storing RoleBindings permissions in the database:", err)
 	}
-
-	return issues
 
 }
