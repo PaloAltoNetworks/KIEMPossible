@@ -16,14 +16,16 @@ func AuthMain() {
 		}
 		clusterName := clusterInfo.ClusterName
 
-		logGroup, logStream, err := log_parsing.ExtractAWSLogs(client, clusterName)
+		logEvents, err := log_parsing.ExtractAWSLogs(client, clusterName)
 		if err != nil {
 			fmt.Printf("Failed to extract AWS logs: %+v\n", err)
-		} else if logGroup == nil || logStream == nil {
-			fmt.Printf("Failed to extract AWS logs: No appropriate logGroup or logStream found\n")
 		} else {
-			// Need to change to go through logs and add logic - need to check logevents return types
-			fmt.Printf("Log Group:%+v\nLog Stream:%+v\n", *logGroup, *logStream)
+			DB, err := auth_handling.DBConnect()
+			if err != nil {
+				fmt.Println("Error in DB Connection", err)
+			}
+			defer DB.Close()
+			log_parsing.HandleAWSLogs(logEvents, DB)
 		}
 
 	} else if cloudProvider == "azure" {

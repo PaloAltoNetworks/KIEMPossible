@@ -95,7 +95,7 @@ func processRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rba
 					for _, resourceType := range resourceTypes {
 						if len(resourceNames) > 0 {
 							for _, resourceName := range resourceNames {
-								scope := fmt.Sprintf("%s/%s", resourceType.ResourceType, resourceName)
+								scope := fmt.Sprintf("%s/%s/%s", namespace, resourceType.ResourceType, resourceName)
 								_, err := stmt.Exec(entityName, entityType, resourceType.APIGroup, resourceType.ResourceType, verb, scope, roleName, "Role", roleBindingName, "RoleBinding", nil, nil)
 								if err != nil {
 									return err

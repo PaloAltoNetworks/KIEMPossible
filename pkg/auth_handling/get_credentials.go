@@ -72,9 +72,9 @@ func Authenticator() (CredentialsPath, ClusterInfo, string) {
 	cmd.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [command] [options]\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Available commands:\n")
-		fmt.Fprintf(os.Stderr, "  aws\tAuthenticate with AWS\n")
-		fmt.Fprintf(os.Stderr, "  azure\tAuthenticate with Azure\n")
-		fmt.Fprintf(os.Stderr, "  gcp\tAuthenticate with GCP\n")
+		fmt.Fprintf(os.Stderr, "  aws\tUse for EKS Clusters\n")
+		fmt.Fprintf(os.Stderr, "  azure\tUse for AKS Clusters\n")
+		fmt.Fprintf(os.Stderr, "  gcp\tUse for GKE Clusters\n")
 		fmt.Fprintf(os.Stderr, "  local\tUse local log file\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "Use '%s [command] -help' for command-specific help.\n", os.Args[0])
