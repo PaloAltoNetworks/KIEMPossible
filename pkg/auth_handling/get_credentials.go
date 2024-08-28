@@ -14,11 +14,13 @@ type CredentialsPath struct {
 type ClusterInfo struct {
 	ClusterName string
 	WorkspaceID string
+	Sub         string
+	RG          string
 	ProjectID   string
 	Region      string
 }
 
-func AcceptCredentials(awsCredentialsFile, awsClusterName, azureCredentialsFile, azureClusterName, azureWorkspaceID, gcpCredentialsFile, gcpClusterName, gcpProjectID, gcpRegion, logFile string) (CredentialsPath, ClusterInfo, error) {
+func AcceptCredentials(awsCredentialsFile, awsClusterName, azureCredentialsFile, azureClusterName, azureWorkspaceID, azureSubscriptionID, azureResourceGroup, gcpCredentialsFile, gcpClusterName, gcpProjectID, gcpRegion, logFile string) (CredentialsPath, ClusterInfo, error) {
 	if logFile != "" {
 		return CredentialsPath{LogFile: logFile}, ClusterInfo{}, nil
 	}
@@ -28,7 +30,7 @@ func AcceptCredentials(awsCredentialsFile, awsClusterName, azureCredentialsFile,
 	}
 
 	if azureCredentialsFile != "" {
-		return CredentialsPath{FilePath: azureCredentialsFile}, ClusterInfo{ClusterName: azureClusterName, WorkspaceID: azureWorkspaceID}, nil
+		return CredentialsPath{FilePath: azureCredentialsFile}, ClusterInfo{ClusterName: azureClusterName, WorkspaceID: azureWorkspaceID, Sub: azureSubscriptionID, RG: azureResourceGroup}, nil
 	}
 
 	if gcpCredentialsFile != "" {
@@ -53,6 +55,8 @@ func Authenticator() (CredentialsPath, ClusterInfo, string) {
 	azureCredentialsFile := azureCmd.String("credentials-file", "", "Path to a File with SP Credentials, Structure is:\nAZURE_TENANT_ID=<tenant_id>\nAZURE_CLIENT_ID=<client_id>\nAZURE_CLIENT_SECRET=<secret>")
 	azureClusterName := azureCmd.String("cluster-name", "", "Azure cluster name")
 	azureWorkspaceID := azureCmd.String("workspace-id", "", "Azure log analytics workspace ID")
+	azureSubscriptionID := azureCmd.String("sub-id", "", "Azure subscription ID")
+	azureResourceGroup := azureCmd.String("rg", "", "Azure resource group")
 
 	// GCP flags
 	gcpCredentialsFile := gcpCmd.String("credentials-file", "", "GCP credentials file path to a service account JSON key file")
@@ -108,16 +112,16 @@ func Authenticator() (CredentialsPath, ClusterInfo, string) {
 	switch args[0] {
 	case "aws":
 		cloudProvider = "aws"
-		credentialsPath, clusterInfo, err = AcceptCredentials(*awsCredentialsFile, *awsClusterName, "", "", "", "", "", "", "", "")
+		credentialsPath, clusterInfo, err = AcceptCredentials(*awsCredentialsFile, *awsClusterName, "", "", "", "", "", "", "", "", "", "")
 	case "azure":
 		cloudProvider = "azure"
-		credentialsPath, clusterInfo, err = AcceptCredentials("", "", *azureCredentialsFile, *azureClusterName, *azureWorkspaceID, "", "", "", "", "")
+		credentialsPath, clusterInfo, err = AcceptCredentials("", "", *azureCredentialsFile, *azureClusterName, *azureWorkspaceID, *azureSubscriptionID, *azureResourceGroup, "", "", "", "", "")
 	case "gcp":
 		cloudProvider = "gcp"
-		credentialsPath, clusterInfo, err = AcceptCredentials("", "", "", "", "", *gcpCredentialsFile, *gcpClusterName, *gcpProjectID, *gcpRegion, "")
+		credentialsPath, clusterInfo, err = AcceptCredentials("", "", "", "", "", "", "", *gcpCredentialsFile, *gcpClusterName, *gcpProjectID, *gcpRegion, "")
 	case "local":
 		cloudProvider = "local"
-		credentialsPath, clusterInfo, err = AcceptCredentials("", "", "", "", "", "", "", "", "", *logFile)
+		credentialsPath, clusterInfo, err = AcceptCredentials("", "", "", "", "", "", "", "", "", "", "", *logFile)
 	default:
 		fmt.Println("Error: Invalid cloud provider")
 		os.Exit(1)

@@ -5,12 +5,30 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"golang.org/x/oauth2/google"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-func KubeConnect() (client *kubernetes.Clientset, err error) {
+func KubeConnect(clusterName string, clusterType string, aws_sess *session.Session, azure_cred *azidentity.ClientSecretCredential, Sub, RG string, gcp_cred *google.Credentials, region, projectID string, cred_file CredentialsPath) (client *kubernetes.Clientset, err error) {
+	switch clusterType {
+	case "EKS":
+		return connectToEKS(aws_sess, clusterName)
+	case "AKS":
+		return connectToAKS(azure_cred, clusterName, Sub, RG)
+	case "GKE":
+		return connectToGKE(gcp_cred, clusterName, region, projectID, cred_file)
+	case "LOCAL":
+		return connectToLocal()
+	default:
+		return nil, fmt.Errorf("unsupported cluster type: %s", clusterType)
+	}
+}
+
+func connectToLocal() (client *kubernetes.Clientset, err error) {
 	// Try connecting using InClusterConfig
 	config, err := rest.InClusterConfig()
 	if err == nil {

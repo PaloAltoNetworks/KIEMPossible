@@ -8,16 +8,16 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
-func GCPAuth(credentialsPath CredentialsPath) (*google.Credentials, error) {
+func GCPAuth(credentialsPath CredentialsPath) (*google.Credentials, CredentialsPath, error) {
 	filePath := credentialsPath.FilePath
 
 	jsonKey, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read service account key file: %v", err)
+		return nil, credentialsPath, fmt.Errorf("failed to read service account key file: %v", err)
 	}
 	creds, err := google.CredentialsFromJSON(context.Background(), jsonKey, "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Google Credentials: %v", err)
+		return nil, credentialsPath, fmt.Errorf("failed to create Google Credentials: %v", err)
 	}
-	return creds, nil
+	return creds, credentialsPath, nil
 }

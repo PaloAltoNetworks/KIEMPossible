@@ -7,7 +7,7 @@ import (
 	"github.com/Golansami125/clusterlogo/pkg/log_parsing"
 )
 
-func AuthMain() {
+func Collect() {
 	credentialsPath, clusterInfo, cloudProvider := auth_handling.Authenticator()
 	if cloudProvider == "aws" {
 		client, err := auth_handling.AwsAuth(credentialsPath)
@@ -15,6 +15,7 @@ func AuthMain() {
 			fmt.Printf("Failed to establish AWS client: %+v\n", err)
 		}
 		clusterName := clusterInfo.ClusterName
+		KubeCollect(clusterName, "EKS", client, nil, "", "", nil, "", "", credentialsPath)
 
 		logEvents, err := log_parsing.ExtractAWSLogs(client, clusterName)
 		if err != nil {
@@ -35,29 +36,43 @@ func AuthMain() {
 		}
 		clusterName := clusterInfo.ClusterName
 		workspaceID := clusterInfo.WorkspaceID
+		subscriptionID := clusterInfo.Sub
+		resourceGroup := clusterInfo.RG
+
+		KubeCollect(clusterName, "AKS", nil, cred, subscriptionID, resourceGroup, nil, "", "", credentialsPath)
+
 		logEvents, err := log_parsing.ExtractAzureLogs(cred, clusterName, workspaceID)
 		if err != nil {
 			fmt.Printf("Failed to extract Azure logs: %+v\n", err)
 		} else {
-			// Need to test credential acceptence and add logic to extract azure logs - need to check logevents return types
-			fmt.Printf("Azure Credentials:%+v\nCluster Name:%+v\nWorkspace ID:%+v\n", cred, clusterName, workspaceID)
-			fmt.Printf("Log Events:%+v\n", logEvents)
+			DB, err := auth_handling.DBConnect()
+			if err != nil {
+				fmt.Println("Error in DB Connection", err)
+			}
+			defer DB.Close()
+			log_parsing.HandleAzureLogs(logEvents, DB)
 		}
 	} else if cloudProvider == "gcp" {
-		cred, err := auth_handling.GCPAuth(credentialsPath)
+
+		cred, cred_path, err := auth_handling.GCPAuth(credentialsPath)
 		if err != nil {
 			fmt.Printf("Failed to establish GCP client: %+v\n", err)
 		}
 		clusterName := clusterInfo.ClusterName
 		projectID := clusterInfo.ProjectID
 		region := clusterInfo.Region
+		KubeCollect(clusterName, "GKE", nil, nil, "", "", cred, region, projectID, cred_path)
 		logEvents, err := log_parsing.ExtractGCPLogs(cred, clusterName, projectID, region)
 		if err != nil {
-			fmt.Printf("Failed to extract Azure logs: %+v\n", err)
+			fmt.Printf("Failed to extract GCP logs: %+v\n", err)
 		} else {
 			// Need to test credential acceptence and check the logic fo GCP log extraction
 			fmt.Printf("GCP Credentials:%+v\nCluster Name:%+v\n", cred, clusterName)
 			fmt.Printf("Log Events:%+v\n", logEvents)
 		}
+	} else if cloudProvider == "local" {
+		// Implement local cluster collection logic
+		// clusterName := clusterInfo.ClusterName
+		// KubeCollect("LOCAL", nil, clusterName)
 	}
 }

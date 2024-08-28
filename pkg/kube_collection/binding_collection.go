@@ -95,7 +95,7 @@ func processRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rba
 					for _, resourceType := range resourceTypes {
 						if len(resourceNames) > 0 {
 							for _, resourceName := range resourceNames {
-								scope := fmt.Sprintf("%s/%s/%s", namespace, resourceType.ResourceType, resourceName)
+								scope := fmt.Sprintf("%s/%s", namespace, resourceName)
 								_, err := stmt.Exec(entityName, entityType, resourceType.APIGroup, resourceType.ResourceType, verb, scope, roleName, "Role", roleBindingName, "RoleBinding", nil, nil)
 								if err != nil {
 									return err
@@ -134,7 +134,7 @@ func processClusterRoleRules(stmt *sql.Stmt, entityName, entityType string, rule
 					for _, resourceType := range resourceTypes {
 						if len(resourceNames) > 0 {
 							for _, resourceName := range resourceNames {
-								scope := fmt.Sprintf("%s/%s", resourceType.ResourceType, resourceName)
+								scope := fmt.Sprintf("%s", resourceName)
 								_, err := stmt.Exec(entityName, entityType, resourceType.APIGroup, resourceType.ResourceType, verb, scope, clusterRoleName, "ClusterRole", roleBindingName, "ClusterRoleBinding", nil, nil)
 								if err != nil {
 									return err
@@ -208,7 +208,7 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 
 								if len(resourceNames) > 0 {
 									for _, resourceName := range resourceNames {
-										scope := fmt.Sprintf("%s/%s", resourceType.ResourceType, resourceName)
+										scope := fmt.Sprintf("%s", resourceName)
 										_, err := stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, resourceType.ResourceType, verb, scope, clusterRole.Name, "ClusterRole", crb.Name, "ClusterRoleBinding", nil, nil)
 										if err != nil {
 											return err

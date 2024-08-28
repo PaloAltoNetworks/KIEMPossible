@@ -1,16 +1,24 @@
 /*
-- Need to check re cloud providers - will this get all the entities or is there more mapping with things like annotations?
 
 - Flattened - the verbs that only work for specific resources needs to be documented
-- Flatten everything to subresources (maybe during the "over-permissive" check actions over every subresource and the parent resource - heirarchichally - if get on pods, check last pod get, if not then check subresources) - e.g. given get on pods when only need get on pods/status
 - Docs - write what it accounts for - stuff like resourceNames, all permissions are individually handled (some may appear twice for the same source if given by different granters). Permissions given specifically to subresources are shown as such in the db
-- Docs - inclusterconfig as default, fallback to kubeconfig
+- Docs - inclusterconfig as default, fallback to kubeconfig - kubeconfig handling separate for each CSP
+- Docs - groups removed
+
+- AWS - permission to get creds and logs
+- Azure - local kubernetes accounts need to be enabled (for the fetching of the kubeconfig), permissions to get clusteradmin credfs and get logs
 
 
-- Check how to deploy - can be as a container? - maybe have a "mode" for kube-collection (can send to db outside cluster) and "mode" for log collection/parsing (so can do separately) - CHECK WHAT HAPPENS IF CREDS FILE IS NOT ~/.aws/credentials
-- Check re aggregated roles - maybe add a boolean column if yay/nay? (https://pkg.go.dev/k8s.io/api/rbac/v1#ClusterRole)
+- Add "Local Logic", gcp logic
 - Add check for stale resource? roles/clusterroles with no bindings?
-- Remove groups (?)
+- AWS Users given access through either configmap or access entries & policies - need to check if can support
+- Check AWS logs for subresource (are they in a separate field or in the resource field?)
+- Add "flattening" to subresource in initial cluster fetching
+- Add support for namespaces as both namespaced and cluster-wide
+- Improve DB speed when checking against eventLogs
+- Check permission-scope and last-used resource logic
+
+
 
 - Talk name:
 Ready? Set... ClusterLoGo! Exploring Least Privileged Through Kubernetes Logs
@@ -20,8 +28,7 @@ Ready? Set... ClusterLoGo! Exploring Least Privileged Through Kubernetes Logs
 package main
 
 func main() {
-	KubeCollect()
-	AuthMain()
+	Collect()
 }
 
 /* Self-Managed

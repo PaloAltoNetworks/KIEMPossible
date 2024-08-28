@@ -4,13 +4,16 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Golansami125/clusterlogo/pkg/auth_handling"
 	"github.com/Golansami125/clusterlogo/pkg/kube_collection"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"golang.org/x/oauth2/google"
 	rbacv1 "k8s.io/api/rbac/v1"
 )
 
-func KubeCollect() {
-	clientset, err := auth_handling.KubeConnect()
+func KubeCollect(clusterName, clusterType string, sess *session.Session, azure_cred *azidentity.ClientSecretCredential, subscriptionID, resourceGroup string, gcp_cred *google.Credentials, region, projectID string, cred_file auth_handling.CredentialsPath) {
+	clientset, err := auth_handling.KubeConnect(clusterName, clusterType, sess, azure_cred, subscriptionID, resourceGroup, gcp_cred, region, projectID, cred_file)
 	if err != nil {
 		fmt.Printf("error getting Kubernetes clientset: %v\n", err)
 		os.Exit(1)
