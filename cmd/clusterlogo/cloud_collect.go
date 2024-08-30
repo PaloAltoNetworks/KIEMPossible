@@ -9,12 +9,20 @@ import (
 
 func Collect() {
 	credentialsPath, clusterInfo, cloudProvider := auth_handling.Authenticator()
+	clusterName := clusterInfo.ClusterName
+	workspaceID := clusterInfo.WorkspaceID
+	subscriptionID := clusterInfo.Sub
+	resourceGroup := clusterInfo.RG
+	projectID := clusterInfo.ProjectID
+	region := clusterInfo.Region
+	logFile := credentialsPath.LogFile
+
 	if cloudProvider == "aws" {
 		client, err := auth_handling.AwsAuth(credentialsPath)
 		if err != nil {
 			fmt.Printf("Failed to establish AWS client: %+v\n", err)
 		}
-		clusterName := clusterInfo.ClusterName
+		//clusterName := clusterInfo.ClusterName
 		KubeCollect(clusterName, "EKS", client, nil, "", "", nil, "", "", credentialsPath)
 
 		logEvents, err := log_parsing.ExtractAWSLogs(client, clusterName)
@@ -34,10 +42,10 @@ func Collect() {
 		if err != nil {
 			fmt.Printf("Failed to establish Azure client: %+v\n", err)
 		}
-		clusterName := clusterInfo.ClusterName
-		workspaceID := clusterInfo.WorkspaceID
-		subscriptionID := clusterInfo.Sub
-		resourceGroup := clusterInfo.RG
+		//clusterName := clusterInfo.ClusterName
+		//workspaceID := clusterInfo.WorkspaceID
+		//subscriptionID := clusterInfo.Sub
+		//resourceGroup := clusterInfo.RG
 
 		KubeCollect(clusterName, "AKS", nil, cred, subscriptionID, resourceGroup, nil, "", "", credentialsPath)
 
@@ -58,21 +66,29 @@ func Collect() {
 		if err != nil {
 			fmt.Printf("Failed to establish GCP client: %+v\n", err)
 		}
-		clusterName := clusterInfo.ClusterName
-		projectID := clusterInfo.ProjectID
-		region := clusterInfo.Region
+		//clusterName := clusterInfo.ClusterName
+		//projectID := clusterInfo.ProjectID
+		//region := clusterInfo.Region
 		KubeCollect(clusterName, "GKE", nil, nil, "", "", cred, region, projectID, cred_path)
 		logEvents, err := log_parsing.ExtractGCPLogs(cred, clusterName, projectID, region)
 		if err != nil {
 			fmt.Printf("Failed to extract GCP logs: %+v\n", err)
 		} else {
-			// Need to test credential acceptence and check the logic fo GCP log extraction
-			fmt.Printf("GCP Credentials:%+v\nCluster Name:%+v\n", cred, clusterName)
+			// Need to figure out how to query logs - quota is 60 per minute
 			fmt.Printf("Log Events:%+v\n", logEvents)
 		}
 	} else if cloudProvider == "local" {
-		// Implement local cluster collection logic
-		// clusterName := clusterInfo.ClusterName
-		// KubeCollect("LOCAL", nil, clusterName)
+		KubeCollect("", "LOCAL", nil, nil, "", "", nil, "", "", credentialsPath)
+		logEvents, err := log_parsing.ExtractLocalLogs(logFile)
+		if err != nil {
+			fmt.Printf("Failed to extract Local logs: %+v\n", err)
+		} else {
+			DB, err := auth_handling.DBConnect()
+			if err != nil {
+				fmt.Println("Error in DB Connection", err)
+			}
+			defer DB.Close()
+			log_parsing.HandleLocalLogs(logEvents, DB)
+		}
 	}
 }

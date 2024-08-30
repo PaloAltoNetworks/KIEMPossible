@@ -37,7 +37,6 @@ func connectToGKE(cred *google.Credentials, clusterName, region, projectID strin
 	cluster, err := containerClient.GetCluster(context.Background(), &containerpb.GetClusterRequest{
 		Name:      fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, region, clusterName),
 		ProjectId: projectID,
-		//Zone:      fmt.Sprintf("%s", region),
 	})
 	if err != nil {
 		return nil, err
@@ -57,10 +56,6 @@ func connectToGKE(cred *google.Credentials, clusterName, region, projectID strin
 			CAData: ca,
 		},
 	})
-
-	Version, err := clientset.Discovery().ServerVersion()
-	cliversion := clientset.Discovery().RESTClient().APIVersion()
-	fmt.Printf("%+v, %+v\n", Version, cliversion)
 
 	return clientset, nil
 }

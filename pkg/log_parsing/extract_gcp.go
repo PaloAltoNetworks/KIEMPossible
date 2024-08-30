@@ -3,6 +3,7 @@ package log_parsing
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"cloud.google.com/go/logging"
 	"cloud.google.com/go/logging/logadmin"
@@ -17,12 +18,13 @@ func ExtractGCPLogs(creds *google.Credentials, clusterName, projectID, region st
 		return nil, fmt.Errorf("failed to create logging client: %v", err)
 	}
 	defer client.Close()
-	filter := fmt.Sprintf(`logName="cloudaudit.googleapis.com/activity" ANDs
+	start := time.Now().AddDate(0, 0, -10).Format(time.RFC3339)
+	filter := fmt.Sprintf(` log_name="projects/%s/logs/cloudaudit.googleapis.com%%2Factivity" AND
 							resource.type="k8s_cluster" AND
                             resource.labels.cluster_name="%s" AND
 							resource.labels.project_id="%s" AND
 							resource.labels.location="%s" AND
-                            protoPayload.@type="type.googleapis.com/k8s.io.audit.v1.Event"`, clusterName, projectID, region)
+							timestamp>"%s"`, projectID, clusterName, projectID, region, start)
 
 	var logEvents []*logging.Entry
 	iter := client.Entries(context.Background(), logadmin.Filter(filter))
