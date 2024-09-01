@@ -2,14 +2,13 @@ package kube_collection
 
 import (
 	"context"
-	"fmt"
-
 	"database/sql"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+	"fmt"
+	"strings"
 
 	rbacv1 "k8s.io/api/rbac/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 type ResourceType struct {
@@ -22,13 +21,10 @@ type ResourceType struct {
 }
 
 func CollectRoleBindings(client *kubernetes.Clientset, db *sql.DB, clusterRoles map[string]*rbacv1.ClusterRole, roles map[string]*rbacv1.Role) error {
-	// Get a list of all namespaces in the cluster
 	namespaces, err := client.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-
-	// Get a list of all resource types and their API groups
 	resourceTypes, err := GetResourceTypesAndAPIGroups(client)
 	if err != nil {
 		return err
@@ -43,7 +39,7 @@ func CollectRoleBindings(client *kubernetes.Clientset, db *sql.DB, clusterRoles 
 		return err
 	}
 	defer stmt.Close()
-
+	subresources, err := GetSubresources(client)
 	for _, namespace := range namespaces.Items {
 		rbList, err := client.RbacV1().RoleBindings(namespace.Name).List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
@@ -70,9 +66,9 @@ func CollectRoleBindings(client *kubernetes.Clientset, db *sql.DB, clusterRoles 
 				}
 
 				if role != nil {
-					processRoleRules(stmt, entityName, subject.Kind, role.Rules, resourceTypes, namespace.Name, role.Name, rb.Name)
+					processRoleRules(stmt, entityName, subject.Kind, role.Rules, resourceTypes, namespace.Name, role.Name, rb.Name, subresources)
 				} else if clusterRole != nil {
-					processClusterRoleRules(stmt, entityName, subject.Kind, clusterRole.Rules, resourceTypes, clusterRole.Name, rb.Name)
+					processClusterRoleRules(stmt, entityName, subject.Kind, clusterRole.Rules, resourceTypes, clusterRole.Name, rb.Name, subresources)
 				}
 			}
 		}
@@ -81,7 +77,7 @@ func CollectRoleBindings(client *kubernetes.Clientset, db *sql.DB, clusterRoles 
 	return nil
 }
 
-func processRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rbacv1.PolicyRule, resourceTypes []ResourceType, namespace, roleName, roleBindingName string) error {
+func processRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rbacv1.PolicyRule, resourceTypes []ResourceType, namespace, roleName, roleBindingName string, subresources map[string]string) error {
 	for _, rule := range rules {
 		resourceNames := rule.ResourceNames
 		for _, apiGroup := range rule.APIGroups {
@@ -96,6 +92,14 @@ func processRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rba
 						if len(resourceNames) > 0 {
 							for _, resourceName := range resourceNames {
 								scope := fmt.Sprintf("%s/%s", namespace, resourceName)
+								for subresource, srapiGroup := range subresources {
+									if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup {
+										_, err = stmt.Exec(entityName, entityType, resourceType.APIGroup, subresource, verb, scope, roleName, "Role", roleBindingName, "RoleBinding", nil, nil)
+										if err != nil {
+											return err
+										}
+									}
+								}
 								_, err := stmt.Exec(entityName, entityType, resourceType.APIGroup, resourceType.ResourceType, verb, scope, roleName, "Role", roleBindingName, "RoleBinding", nil, nil)
 								if err != nil {
 									return err
@@ -105,6 +109,14 @@ func processRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rba
 							scope := namespace
 							if !resourceType.Namespaced {
 								scope = "cluster-wide"
+							}
+							for subresource, srapiGroup := range subresources {
+								if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup {
+									_, err = stmt.Exec(entityName, entityType, resourceType.APIGroup, subresource, verb, scope, roleName, "Role", roleBindingName, "RoleBinding", nil, nil)
+									if err != nil {
+										return err
+									}
+								}
 							}
 							_, err := stmt.Exec(entityName, entityType, resourceType.APIGroup, resourceType.ResourceType, verb, scope, roleName, "Role", roleBindingName, "RoleBinding", nil, nil)
 							if err != nil {
@@ -119,7 +131,7 @@ func processRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rba
 	return nil
 }
 
-func processClusterRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rbacv1.PolicyRule, resourceTypes []ResourceType, clusterRoleName, roleBindingName string) error {
+func processClusterRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rbacv1.PolicyRule, resourceTypes []ResourceType, clusterRoleName, roleBindingName string, subresources map[string]string) error {
 	for _, rule := range rules {
 		resourceNames := rule.ResourceNames
 
@@ -135,14 +147,30 @@ func processClusterRoleRules(stmt *sql.Stmt, entityName, entityType string, rule
 						if len(resourceNames) > 0 {
 							for _, resourceName := range resourceNames {
 								scope := fmt.Sprintf("%s", resourceName)
-								_, err := stmt.Exec(entityName, entityType, resourceType.APIGroup, resourceType.ResourceType, verb, scope, clusterRoleName, "ClusterRole", roleBindingName, "ClusterRoleBinding", nil, nil)
+								for subresource, srapiGroup := range subresources {
+									if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup {
+										_, err = stmt.Exec(entityName, entityType, resourceType.APIGroup, subresource, verb, scope, clusterRoleName, "ClusterRole", roleBindingName, "RoleBinding", nil, nil)
+										if err != nil {
+											return err
+										}
+									}
+								}
+								_, err := stmt.Exec(entityName, entityType, resourceType.APIGroup, resourceType.ResourceType, verb, scope, clusterRoleName, "ClusterRole", roleBindingName, "RoleBinding", nil, nil)
 								if err != nil {
 									return err
 								}
 							}
 						} else {
 							scope := "cluster-wide"
-							_, err := stmt.Exec(entityName, entityType, resourceType.APIGroup, resourceType.ResourceType, verb, scope, clusterRoleName, "ClusterRole", roleBindingName, "ClusterRoleBinding", nil, nil)
+							for subresource, srapiGroup := range subresources {
+								if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup {
+									_, err = stmt.Exec(entityName, entityType, resourceType.APIGroup, subresource, verb, scope, clusterRoleName, "ClusterRole", roleBindingName, "RoleBinding", nil, nil)
+									if err != nil {
+										return err
+									}
+								}
+							}
+							_, err := stmt.Exec(entityName, entityType, resourceType.APIGroup, resourceType.ResourceType, verb, scope, clusterRoleName, "ClusterRole", roleBindingName, "RoleBinding", nil, nil)
 							if err != nil {
 								return err
 							}
@@ -181,7 +209,10 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 		return err
 	}
 	defer stmt.Close()
-
+	subresources, err := GetSubresources(client)
+	if err != nil {
+		return err
+	}
 	for _, crb := range crbList.Items {
 		for _, subject := range crb.Subjects {
 			clusterRole, ok := clusterRoles[crb.RoleRef.Name]
@@ -209,6 +240,14 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 								if len(resourceNames) > 0 {
 									for _, resourceName := range resourceNames {
 										scope := fmt.Sprintf("%s", resourceName)
+										for subresource, srapiGroup := range subresources {
+											if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup {
+												_, err = stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, subresource, resourceType.Verb, scope, clusterRole.Name, "ClusterRole", crb.Name, "ClusterRoleBinding", nil, nil)
+												if err != nil {
+													return err
+												}
+											}
+										}
 										_, err := stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, resourceType.ResourceType, verb, scope, clusterRole.Name, "ClusterRole", crb.Name, "ClusterRoleBinding", nil, nil)
 										if err != nil {
 											return err
@@ -216,6 +255,14 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 									}
 								} else if resourceType.Namespaced {
 									for _, namespace := range namespaces.Items {
+										for subresource, srapiGroup := range subresources {
+											if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup {
+												_, err = stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, subresource, resourceType.Verb, namespace.Name, clusterRole.Name, "ClusterRole", crb.Name, "ClusterRoleBinding", nil, nil)
+												if err != nil {
+													return err
+												}
+											}
+										}
 										_, err = stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, resourceType.ResourceType, resourceType.Verb, namespace.Name, clusterRole.Name, "ClusterRole", crb.Name, "ClusterRoleBinding", nil, nil)
 										if err != nil {
 											return err
@@ -223,6 +270,14 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 
 									}
 								} else {
+									for subresource, srapiGroup := range subresources {
+										if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup {
+											_, err = stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, subresource, resourceType.Verb, "cluster-wide", clusterRole.Name, "ClusterRole", crb.Name, "ClusterRoleBinding", nil, nil)
+											if err != nil {
+												return err
+											}
+										}
+									}
 
 									_, err = stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, resourceType.ResourceType, resourceType.Verb, "cluster-wide", clusterRole.Name, "ClusterRole", crb.Name, "ClusterRoleBinding", nil, nil)
 									if err != nil {

@@ -22,9 +22,7 @@ func Collect() {
 		if err != nil {
 			fmt.Printf("Failed to establish AWS client: %+v\n", err)
 		}
-		//clusterName := clusterInfo.ClusterName
 		KubeCollect(clusterName, "EKS", client, nil, "", "", nil, "", "", credentialsPath)
-
 		logEvents, err := log_parsing.ExtractAWSLogs(client, clusterName)
 		if err != nil {
 			fmt.Printf("Failed to extract AWS logs: %+v\n", err)
@@ -42,13 +40,7 @@ func Collect() {
 		if err != nil {
 			fmt.Printf("Failed to establish Azure client: %+v\n", err)
 		}
-		//clusterName := clusterInfo.ClusterName
-		//workspaceID := clusterInfo.WorkspaceID
-		//subscriptionID := clusterInfo.Sub
-		//resourceGroup := clusterInfo.RG
-
 		KubeCollect(clusterName, "AKS", nil, cred, subscriptionID, resourceGroup, nil, "", "", credentialsPath)
-
 		logEvents, err := log_parsing.ExtractAzureLogs(cred, clusterName, workspaceID)
 		if err != nil {
 			fmt.Printf("Failed to extract Azure logs: %+v\n", err)
@@ -60,23 +52,21 @@ func Collect() {
 			defer DB.Close()
 			log_parsing.HandleAzureLogs(logEvents, DB)
 		}
+
 	} else if cloudProvider == "gcp" {
 
 		cred, cred_path, err := auth_handling.GCPAuth(credentialsPath)
 		if err != nil {
 			fmt.Printf("Failed to establish GCP client: %+v\n", err)
 		}
-		//clusterName := clusterInfo.ClusterName
-		//projectID := clusterInfo.ProjectID
-		//region := clusterInfo.Region
 		KubeCollect(clusterName, "GKE", nil, nil, "", "", cred, region, projectID, cred_path)
 		logEvents, err := log_parsing.ExtractGCPLogs(cred, clusterName, projectID, region)
 		if err != nil {
 			fmt.Printf("Failed to extract GCP logs: %+v\n", err)
 		} else {
-			// Need to figure out how to query logs - quota is 60 per minute
 			fmt.Printf("Log Events:%+v\n", logEvents)
 		}
+
 	} else if cloudProvider == "local" {
 		KubeCollect("", "LOCAL", nil, nil, "", "", nil, "", "", credentialsPath)
 		logEvents, err := log_parsing.ExtractLocalLogs(logFile)

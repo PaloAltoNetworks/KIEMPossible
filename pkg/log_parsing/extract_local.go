@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 
+	"github.com/cheggaaa/pb"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
 )
 
@@ -52,9 +54,27 @@ func parseLines(data []byte) [][]byte {
 }
 
 func HandleLocalLogs(logEvents []auditv1.Event, db *sql.DB) {
+	fmt.Println("Processing Log File...")
+	bar := pb.StartNew(0)
 	for _, event := range logEvents {
-		fmt.Printf("Event: %v\n", event)
+		if event.Stage == "ResponseComplete" && event.ResponseStatus != nil && event.ResponseStatus.Code == 200 {
+			entityName, entityType := getEntityNameAndType(event.User.Username)
+			apiGroup := getAPIGroup(event.ObjectRef.APIGroup, event.ObjectRef.APIVersion)
+			resourceType := event.ObjectRef.Resource
+			verb := event.Verb
+			permissionScope := getPermissionScope(event.ObjectRef.Namespace, event.ObjectRef.Name)
+			lastUsedTime := getLocalLastUsedTime(event.RequestReceivedTimestamp)
+			lastUsedResource := getLastUsedResource(event.ObjectRef.Namespace, event.ObjectRef.Resource, event.ObjectRef.Name)
+			updateDatabase(db, entityName, entityType, apiGroup, resourceType, verb, permissionScope, lastUsedTime, lastUsedResource)
+		}
+		bar.Increment()
 	}
-	// Implement logic to handle the log events in the database
-	// ...
+	bar.Finish()
+	fmt.Println("Log File processed successfully!")
+}
+
+func getLocalLastUsedTime(eventTime metav1.MicroTime) string {
+	parsedTime := eventTime.Time
+	formattedTime := parsedTime.Format("2006-01-02 15:04:05")
+	return formattedTime
 }

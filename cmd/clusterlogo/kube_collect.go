@@ -18,23 +18,18 @@ func KubeCollect(clusterName, clusterType string, sess *session.Session, azure_c
 		fmt.Printf("error getting Kubernetes clientset: %v\n", err)
 		os.Exit(1)
 	}
-
-	// Create  maps to store resources
 	roles := make(map[string]*rbacv1.Role)
 	clusterRoles := make(map[string]*rbacv1.ClusterRole)
 
-	// Collect resources
 	err = kube_collection.CollectRoles(clientset, &roles)
 	if err != nil {
 		panic(err.Error())
 	}
-
 	err = kube_collection.CollectClusterRoles(clientset, &clusterRoles)
 	if err != nil {
 		panic(err.Error())
 	}
 
-	// Create DB connection
 	DB, err := auth_handling.DBConnect()
 	if err != nil {
 		fmt.Println("Error in DB Connection", err)
@@ -51,7 +46,6 @@ func KubeCollect(clusterName, clusterType string, sess *session.Session, azure_c
 	if err != nil {
 		fmt.Println("Error storing clusterRoleBindings permissions in the database:", err)
 	}
-
 	err = kube_collection.CollectRoleBindings(clientset, DB, clusterRoles, roles)
 	if err != nil {
 		fmt.Println("Error storing RoleBindings permissions in the database:", err)

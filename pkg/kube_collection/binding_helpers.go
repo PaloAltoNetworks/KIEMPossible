@@ -10,18 +10,15 @@ import (
 
 func GetResourceTypesAndAPIGroups(client *kubernetes.Clientset) ([]ResourceType, error) {
 	resourceTypes := []ResourceType{}
-
 	apiResourceList, err := client.Discovery().ServerPreferredResources()
 	if err != nil {
 		return nil, err
 	}
-
 	for _, apiResourceGroup := range apiResourceList {
 		groupVersion, err := schema.ParseGroupVersion(apiResourceGroup.GroupVersion)
 		if err != nil {
 			return nil, err
 		}
-
 		for _, apiResource := range apiResourceGroup.APIResources {
 			apiGroup := groupVersion.Group
 			if apiGroup == "" {
@@ -29,22 +26,18 @@ func GetResourceTypesAndAPIGroups(client *kubernetes.Clientset) ([]ResourceType,
 			} else {
 				apiGroup = fmt.Sprintf("%s/%s", apiGroup, groupVersion.Version)
 			}
-
 			resourceTypes = append(resourceTypes, ResourceType{
 				APIGroup:     apiGroup,
 				ResourceType: apiResource.Name,
 				Namespaced:   apiResource.Namespaced,
 			})
-
 		}
 	}
-
 	return resourceTypes, nil
 }
 
 func FlattenWildcards(resourceTypes []ResourceType, verb, resource, apiGroup string) ([]ResourceType, error) {
 	var flattenedResourceTypes []ResourceType
-
 	if verb == "*" && resource == "*" {
 		// Return all possible combinations of verbs and resource types
 		for _, rt := range resourceTypes {
@@ -52,7 +45,6 @@ func FlattenWildcards(resourceTypes []ResourceType, verb, resource, apiGroup str
 			if err != nil {
 				return nil, err
 			}
-
 			for _, v := range verbs {
 				flattenedResourceTypes = append(flattenedResourceTypes, ResourceType{
 					APIGroup:     rt.APIGroup,
@@ -66,12 +58,10 @@ func FlattenWildcards(resourceTypes []ResourceType, verb, resource, apiGroup str
 		// Flatten the verb to all possible verbs for the given resource type
 		for _, rt := range resourceTypes {
 			if rt.ResourceType == resource {
-				// Get the list of verbs for this resource type
 				verbs, err := GetVerbsForResourceType(rt.ResourceType)
 				if err != nil {
 					return nil, err
 				}
-
 				for _, v := range verbs {
 					flattenedResourceTypes = append(flattenedResourceTypes, ResourceType{
 						APIGroup:     rt.APIGroup,
@@ -119,7 +109,6 @@ func FlattenWildcards(resourceTypes []ResourceType, verb, resource, apiGroup str
 }
 
 func GetVerbsForResourceType(resourceType string) ([]string, error) {
-	// Define a map of resource types and their corresponding verbs
 	resourceVerbsMap := map[string][]string{
 		"certificatesigningrequests": {"approve", "create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"},
 		"roles":                      {"bind", "escalate", "create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"},
@@ -127,23 +116,19 @@ func GetVerbsForResourceType(resourceType string) ([]string, error) {
 		"serviceaccounts":            {"impersonate", "create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"},
 		"users":                      {"impersonate", "create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"},
 		"groups":                     {"impersonate", "create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"},
-		// Add more resource types and their verbs here
+		// Add more resource types and their verbs
 	}
 
-	// Define a list of generic verbs
 	genericVerbs := []string{"create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"}
 
-	// Check if the resource type is in the map
 	if verbs, ok := resourceVerbsMap[resourceType]; ok {
 		return verbs, nil
 	}
 
-	// If the resource type is not in the map, return the generic verbs
 	return genericVerbs, nil
 }
 
 func ContainsVerb(resourceType, verb string) bool {
-	// Define a map of standard verbs that apply to every resource
 	standardVerbs := map[string]bool{
 		"create":           true,
 		"delete":           true,
@@ -155,7 +140,6 @@ func ContainsVerb(resourceType, verb string) bool {
 		"watch":            true,
 	}
 
-	// Define a map of resource-specific verbs
 	resourceVerbMap := map[string][]string{
 		"certificatesigningrequests": {"approve"},
 		"roles":                      {"bind", "escalate"},
@@ -163,26 +147,54 @@ func ContainsVerb(resourceType, verb string) bool {
 		"serviceaccounts":            {"impersonate"},
 		"users":                      {"impersonate"},
 		"groups":                     {"impersonate"},
-		// Add more resource types and their associated verbs as needed
+		// Add more resource types and their verbs
 	}
 
-	// Check if the verb is a standard verb
 	if _, ok := standardVerbs[verb]; ok {
 		return true
 	}
 
-	// Check if the verb is a resource-specific verb
 	verbs, ok := resourceVerbMap[resourceType]
 	if !ok {
-		// If the resource type is not found in the map, assume no resource-specific verbs are applicable
 		return false
 	}
 
-	// Check if the verb is present in the list of resource-specific verbs for the resource type
 	for _, v := range verbs {
 		if v == verb {
 			return true
 		}
 	}
 	return false
+}
+
+// Line 203 in binding_collection - if resourceType doesn't contain a "/" we assume its a top level resource and check for subresources:
+
+// Returns a slice of shortnames - need to check if subresources are returned anywhere
+
+func GetSubresources(client *kubernetes.Clientset) (map[string]string, error) {
+	_, apiResourceLists, err := client.Discovery().ServerGroupsAndResources()
+	if err != nil {
+		return nil, err
+	}
+
+	resources := make(map[string]string)
+	for _, apiResourceList := range apiResourceLists {
+		groupVersion, err := schema.ParseGroupVersion(apiResourceList.GroupVersion)
+		if err != nil {
+			return nil, err
+		}
+
+		groupVersionString := fmt.Sprintf("%s/%s", groupVersion.Group, groupVersion.Version)
+		if groupVersion.Group == "" {
+			groupVersionString = "v1"
+		}
+
+		for _, apiResource := range apiResourceList.APIResources {
+			if strings.Contains(apiResource.Name, "/") {
+				resources[apiResource.Name] = groupVersionString
+			}
+		}
+	}
+
+	return resources, nil
 }

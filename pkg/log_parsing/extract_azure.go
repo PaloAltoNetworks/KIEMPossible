@@ -21,7 +21,7 @@ func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName strin
 
 	var logEvents azquery.LogsClientQueryWorkspaceResponse
 	endTime := time.Now()
-	startTime := endTime.Add(-1 * 24 * time.Hour) // 10 days ago
+	startTime := endTime.Add(-10 * 24 * time.Hour)
 	totalDuration := endTime.Sub(startTime)
 
 	progressBar := pb.StartNew(int(totalDuration.Hours()))
@@ -74,6 +74,7 @@ type objectRef struct {
 
 func HandleAzureLogs(logEvents azquery.LogsClientQueryWorkspaceResponse, db *sql.DB) {
 	fmt.Println("Processing Azure Logs...")
+	bar := pb.StartNew(0)
 	for _, table := range logEvents.Tables {
 		for _, row := range table.Rows {
 			userInfoCell, ok := row[2].(string)
@@ -106,8 +107,10 @@ func HandleAzureLogs(logEvents azquery.LogsClientQueryWorkspaceResponse, db *sql
 			lastUsedResource := getLastUsedResource(objectRef.Namespace, resourceType, objectRef.Name)
 
 			updateDatabase(db, entityName, entityType, apiGroup, resourceType, verb, permissionScope, lastUsedTime, lastUsedResource)
+			bar.Increment()
 		}
 	}
+	bar.Finish()
 	fmt.Println("Azure Logs processed successfully!")
 }
 

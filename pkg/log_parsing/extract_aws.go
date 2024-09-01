@@ -55,21 +55,20 @@ type AuditLogEvent struct {
 		Username string `json:"username"`
 	} `json:"user"`
 	ObjectRef struct {
-		Resource       string `json:"resource"`
-		Namespace      string `json:"namespace"`
-		Name           string `json:"name"`
-		UID            string `json:"uid"`
-		APIGroup       string `json:"apiGroup"`
-		APIVersion     string `json:"apiVersion"`
-		ResourceSource struct {
-			Resource string `json:"resource"`
-		} `json:"resourceSource"`
+		Resource    string `json:"resource"`
+		Subresource string `json:"subresource"`
+		Namespace   string `json:"namespace"`
+		Name        string `json:"name"`
+		UID         string `json:"uid"`
+		APIGroup    string `json:"apiGroup"`
+		APIVersion  string `json:"apiVersion"`
 	} `json:"objectRef"`
 	RequestReceivedTimestamp string `json:"requestReceivedTimestamp"`
 }
 
 func HandleAWSLogs(logEvents []*cloudwatchlogs.FilteredLogEvent, db *sql.DB) {
 	fmt.Println("Processing AWS Logs...")
+	bar := pb.StartNew(0)
 	for _, event := range logEvents {
 		var auditLogEvent AuditLogEvent
 		err := json.Unmarshal([]byte(*event.Message), &auditLogEvent)
@@ -80,13 +79,15 @@ func HandleAWSLogs(logEvents []*cloudwatchlogs.FilteredLogEvent, db *sql.DB) {
 
 		entityName, entityType := getEntityNameAndType(auditLogEvent.User.Username)
 		apiGroup := getAPIGroup(auditLogEvent.ObjectRef.APIGroup, auditLogEvent.ObjectRef.APIVersion)
-		resourceType := auditLogEvent.ObjectRef.Resource
+		resourceType := getResourceType(auditLogEvent.ObjectRef.Resource, auditLogEvent.ObjectRef.Subresource)
 		verb := auditLogEvent.Verb
 		permissionScope := getPermissionScope(auditLogEvent.ObjectRef.Namespace, auditLogEvent.ObjectRef.Name)
 		lastUsedTime := getLastUsedTime(auditLogEvent.RequestReceivedTimestamp)
-		lastUsedResource := getLastUsedResource(auditLogEvent.ObjectRef.Namespace, auditLogEvent.ObjectRef.Resource, auditLogEvent.ObjectRef.Name)
+		lastUsedResource := getLastUsedResource(auditLogEvent.ObjectRef.Namespace, resourceType, auditLogEvent.ObjectRef.Name)
 		updateDatabase(db, entityName, entityType, apiGroup, resourceType, verb, permissionScope, lastUsedTime, lastUsedResource)
+		bar.Increment()
 	}
+	bar.Finish()
 	fmt.Println("AWS Logs processed successfully!")
 }
 
