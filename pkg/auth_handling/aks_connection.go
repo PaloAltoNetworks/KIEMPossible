@@ -22,7 +22,7 @@ func connectToAKS(cred *azidentity.ClientSecretCredential, clusterName, subscrip
 		}
 		fmt.Printf("Failed to create Kubernetes client using InClusterConfig: %v\n", err)
 	} else {
-		fmt.Printf("No InCluster Config, Trying AKS Flow\n")
+		fmt.Printf("No InCluster Config, Trying AKS Flow...\n")
 	}
 	clientFactory, err := armcontainerservice.NewClientFactory(subscription, cred, nil)
 	if err != nil {
@@ -54,5 +54,6 @@ func connectToAKS(cred *azidentity.ClientSecretCredential, clusterName, subscrip
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("Connected to %+v successfully!\n", clusterName)
 	return clientset, nil
 }

@@ -167,10 +167,6 @@ func ContainsVerb(resourceType, verb string) bool {
 	return false
 }
 
-// Line 203 in binding_collection - if resourceType doesn't contain a "/" we assume its a top level resource and check for subresources:
-
-// Returns a slice of shortnames - need to check if subresources are returned anywhere
-
 func GetSubresources(client *kubernetes.Clientset) (map[string]string, error) {
 	_, apiResourceLists, err := client.Discovery().ServerGroupsAndResources()
 	if err != nil {

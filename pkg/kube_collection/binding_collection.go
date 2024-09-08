@@ -73,7 +73,7 @@ func CollectRoleBindings(client *kubernetes.Clientset, db *sql.DB, clusterRoles 
 			}
 		}
 	}
-	fmt.Printf("Inserted RoleBinding Permissions to database\n")
+	fmt.Printf("Inserted RoleBinding Permissions!\n")
 	return nil
 }
 
@@ -93,7 +93,7 @@ func processRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rba
 							for _, resourceName := range resourceNames {
 								scope := fmt.Sprintf("%s/%s", namespace, resourceName)
 								for subresource, srapiGroup := range subresources {
-									if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup {
+									if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup && !strings.Contains(resourceType.ResourceType, "/") {
 										_, err = stmt.Exec(entityName, entityType, resourceType.APIGroup, subresource, verb, scope, roleName, "Role", roleBindingName, "RoleBinding", nil, nil)
 										if err != nil {
 											return err
@@ -111,7 +111,7 @@ func processRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rba
 								scope = "cluster-wide"
 							}
 							for subresource, srapiGroup := range subresources {
-								if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup {
+								if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup && !strings.Contains(resourceType.ResourceType, "/") {
 									_, err = stmt.Exec(entityName, entityType, resourceType.APIGroup, subresource, verb, scope, roleName, "Role", roleBindingName, "RoleBinding", nil, nil)
 									if err != nil {
 										return err
@@ -148,7 +148,7 @@ func processClusterRoleRules(stmt *sql.Stmt, entityName, entityType string, rule
 							for _, resourceName := range resourceNames {
 								scope := fmt.Sprintf("%s", resourceName)
 								for subresource, srapiGroup := range subresources {
-									if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup {
+									if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup && !strings.Contains(resourceType.ResourceType, "/") {
 										_, err = stmt.Exec(entityName, entityType, resourceType.APIGroup, subresource, verb, scope, clusterRoleName, "ClusterRole", roleBindingName, "RoleBinding", nil, nil)
 										if err != nil {
 											return err
@@ -163,7 +163,7 @@ func processClusterRoleRules(stmt *sql.Stmt, entityName, entityType string, rule
 						} else {
 							scope := "cluster-wide"
 							for subresource, srapiGroup := range subresources {
-								if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup {
+								if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup && !strings.Contains(resourceType.ResourceType, "/") {
 									_, err = stmt.Exec(entityName, entityType, resourceType.APIGroup, subresource, verb, scope, clusterRoleName, "ClusterRole", roleBindingName, "RoleBinding", nil, nil)
 									if err != nil {
 										return err
@@ -189,13 +189,11 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 		return err
 	}
 
-	// Get a list of all namespaces in the cluster
 	namespaces, err := client.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
 
-	// Get a list of all resource types and their API groups
 	resourceTypes, err := GetResourceTypesAndAPIGroups(client)
 	if err != nil {
 		return err
@@ -241,7 +239,7 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 									for _, resourceName := range resourceNames {
 										scope := fmt.Sprintf("%s", resourceName)
 										for subresource, srapiGroup := range subresources {
-											if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup {
+											if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup && !strings.Contains(resourceType.ResourceType, "/") {
 												_, err = stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, subresource, resourceType.Verb, scope, clusterRole.Name, "ClusterRole", crb.Name, "ClusterRoleBinding", nil, nil)
 												if err != nil {
 													return err
@@ -256,7 +254,7 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 								} else if resourceType.Namespaced {
 									for _, namespace := range namespaces.Items {
 										for subresource, srapiGroup := range subresources {
-											if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup {
+											if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup && !strings.Contains(resourceType.ResourceType, "/") {
 												_, err = stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, subresource, resourceType.Verb, namespace.Name, clusterRole.Name, "ClusterRole", crb.Name, "ClusterRoleBinding", nil, nil)
 												if err != nil {
 													return err
@@ -271,7 +269,7 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 									}
 								} else {
 									for subresource, srapiGroup := range subresources {
-										if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup {
+										if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup && !strings.Contains(resourceType.ResourceType, "/") {
 											_, err = stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, subresource, resourceType.Verb, "cluster-wide", clusterRole.Name, "ClusterRole", crb.Name, "ClusterRoleBinding", nil, nil)
 											if err != nil {
 												return err
@@ -291,6 +289,6 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 			}
 		}
 	}
-	fmt.Printf("Inserted ClusterRoleBinding Permissions to database\n")
+	fmt.Printf("Inserted ClusterRoleBinding Permissions!\n")
 	return nil
 }

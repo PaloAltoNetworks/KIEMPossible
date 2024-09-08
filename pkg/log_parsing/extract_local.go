@@ -56,9 +56,15 @@ func parseLines(data []byte) [][]byte {
 func HandleLocalLogs(logEvents []auditv1.Event, db *sql.DB) {
 	fmt.Println("Processing Log File...")
 	bar := pb.StartNew(0)
+	userGroups := make(map[string][]string)
 	for _, event := range logEvents {
 		if event.Stage == "ResponseComplete" && event.ResponseStatus != nil && event.ResponseStatus.Code == 200 {
 			entityName, entityType := getEntityNameAndType(event.User.Username)
+			entityGroups := event.User.Groups
+			if _, exists := userGroups[entityName]; !exists {
+				userGroups[entityName] = entityGroups
+				handleGroupInheritance(db, entityName, entityGroups)
+			}
 			apiGroup := getAPIGroup(event.ObjectRef.APIGroup, event.ObjectRef.APIVersion)
 			resourceType := event.ObjectRef.Resource
 			verb := event.Verb

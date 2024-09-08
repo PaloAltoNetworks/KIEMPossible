@@ -22,7 +22,7 @@ func ExtractAWSLogs(sess *session.Session, clusterName string) ([]*cloudwatchlog
 
 	var logEvents []*cloudwatchlogs.FilteredLogEvent
 	var nextToken *string
-	fmt.Println("Extracting AWS CloudWatch Logs...")
+	fmt.Println("Ingesting AWS Logs from %v to %v...", startTime, now)
 	bar := pb.StartNew(0)
 
 	for {
@@ -52,7 +52,8 @@ func ExtractAWSLogs(sess *session.Session, clusterName string) ([]*cloudwatchlog
 type AuditLogEvent struct {
 	Verb string `json:"verb"`
 	User struct {
-		Username string `json:"username"`
+		Username string   `json:"username"`
+		Groups   []string `json:"groups"`
 	} `json:"user"`
 	ObjectRef struct {
 		Resource    string `json:"resource"`
@@ -69,6 +70,7 @@ type AuditLogEvent struct {
 func HandleAWSLogs(logEvents []*cloudwatchlogs.FilteredLogEvent, db *sql.DB) {
 	fmt.Println("Processing AWS Logs...")
 	bar := pb.StartNew(0)
+	userGroups := make(map[string][]string)
 	for _, event := range logEvents {
 		var auditLogEvent AuditLogEvent
 		err := json.Unmarshal([]byte(*event.Message), &auditLogEvent)
@@ -78,6 +80,11 @@ func HandleAWSLogs(logEvents []*cloudwatchlogs.FilteredLogEvent, db *sql.DB) {
 		}
 
 		entityName, entityType := getEntityNameAndType(auditLogEvent.User.Username)
+		entityGroups := auditLogEvent.User.Groups
+		if _, exists := userGroups[entityName]; !exists {
+			userGroups[entityName] = entityGroups
+			handleGroupInheritance(db, entityName, entityGroups)
+		}
 		apiGroup := getAPIGroup(auditLogEvent.ObjectRef.APIGroup, auditLogEvent.ObjectRef.APIVersion)
 		resourceType := getResourceType(auditLogEvent.ObjectRef.Resource, auditLogEvent.ObjectRef.Subresource)
 		verb := auditLogEvent.Verb
@@ -85,65 +92,9 @@ func HandleAWSLogs(logEvents []*cloudwatchlogs.FilteredLogEvent, db *sql.DB) {
 		lastUsedTime := getLastUsedTime(auditLogEvent.RequestReceivedTimestamp)
 		lastUsedResource := getLastUsedResource(auditLogEvent.ObjectRef.Namespace, resourceType, auditLogEvent.ObjectRef.Name)
 		updateDatabase(db, entityName, entityType, apiGroup, resourceType, verb, permissionScope, lastUsedTime, lastUsedResource)
+
 		bar.Increment()
 	}
 	bar.Finish()
 	fmt.Println("AWS Logs processed successfully!")
 }
-
-/*
-
-- check user.groups in the log - if user doesn't exist in the table, add permissions for user based on group permissions. See if can map AWS users
-{
-    "kind": "Event",
-    "apiVersion": "audit.k8s.io/v1",
-    "level": "Request",
-    "auditID": "fb5dba68-6262-4718-b45e-d293b03e434d",
-    "stage": "ResponseComplete",
-    "requestURI": "/api/v1/namespaces",
-    "verb": "list",
-    "user": {
-        "username": "arn:aws:sts::211125685544:assumed-role/sso_admin/gomyers-paloaltonetworks.com",
-        "uid": "aws-iam-authenticator:211125685544:AROATCKASJUUBCXRRKSFT",
-        "groups": [
-            "system:authenticated"
-        ],
-        "extra": {
-            "accessKeyId": [
-                "ASIATCKASJUUD7MPDOZN"
-            ],
-            "arn": [
-                "arn:aws:sts::211125685544:assumed-role/sso_admin/gomyers@paloaltonetworks.com"
-            ],
-            "canonicalArn": [
-                "arn:aws:iam::211125685544:role/sso_admin"
-            ],
-            "principalId": [
-                "AROATCKASJUUBCXRRKSFT"
-            ],
-            "sessionName": [
-                "gomyers@paloaltonetworks.com"
-            ]
-        }
-    },
-    "sourceIPs": [
-        "130.41.219.137"
-    ],
-    "userAgent": "ClusterLoGo_darwin_amd64/v0.0.0 (darwin/amd64) kubernetes/$Format",
-    "objectRef": {
-        "resource": "namespaces",
-        "apiVersion": "v1"
-    },
-    "responseStatus": {
-        "metadata": {},
-        "code": 200
-    },
-    "requestReceivedTimestamp": "2024-08-24T14:27:07.461683Z",
-    "stageTimestamp": "2024-08-24T14:27:07.491536Z",
-    "annotations": {
-        "authorization.k8s.io/decision": "allow",
-        "authorization.k8s.io/reason": "EKS Access Policy: allowed by ClusterRoleBinding \"arn:aws:iam::211125685544:role/sso_admin+arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy\" of ClusterRole \"arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy\" to User \"AROATCKASJUUBCXRRKSFT\""
-    }
-}
-
-*/

@@ -59,5 +59,6 @@ func connectToEKS(sess *session.Session, clusterName string) (client *kubernetes
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("Connected to %+v successfully!\n", clusterName)
 	return clientset, nil
 }

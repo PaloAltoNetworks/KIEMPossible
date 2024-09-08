@@ -24,6 +24,7 @@ func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName strin
 	startTime := endTime.Add(-10 * 24 * time.Hour)
 	totalDuration := endTime.Sub(startTime)
 
+	fmt.Printf("Ingesting Azure Logs from %v to %v...\n", startTime, endTime)
 	progressBar := pb.StartNew(int(totalDuration.Hours()))
 
 	for start := startTime; start.Before(endTime); start = start.Add(1 * time.Hour) {
@@ -58,7 +59,7 @@ func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName strin
 	return logEvents, nil
 }
 
-type UserInfo struct {
+type AzureUserInfo struct {
 	Username string   `json:"username"`
 	Groups   []string `json:"groups"`
 }
@@ -75,14 +76,15 @@ type objectRef struct {
 func HandleAzureLogs(logEvents azquery.LogsClientQueryWorkspaceResponse, db *sql.DB) {
 	fmt.Println("Processing Azure Logs...")
 	bar := pb.StartNew(0)
+	userGroups := make(map[string][]string)
 	for _, table := range logEvents.Tables {
 		for _, row := range table.Rows {
-			userInfoCell, ok := row[2].(string)
+			AzureUserInfoCell, ok := row[2].(string)
 			if !ok {
 				continue
 			}
-			var userInfo UserInfo
-			err := json.Unmarshal([]byte(userInfoCell), &userInfo)
+			var AzureUserInfo AzureUserInfo
+			err := json.Unmarshal([]byte(AzureUserInfoCell), &AzureUserInfo)
 			if err != nil {
 				fmt.Printf("Error unmarshaling user info: %v\n", err)
 				continue
@@ -98,7 +100,12 @@ func HandleAzureLogs(logEvents azquery.LogsClientQueryWorkspaceResponse, db *sql
 				fmt.Printf("Error unmarshaling object ref: %v\n", err)
 				continue
 			}
-			entityName, entityType := getEntityNameAndType(userInfo.Username)
+			entityName, entityType := getEntityNameAndType(AzureUserInfo.Username)
+			entityGroups := AzureUserInfo.Groups
+			if _, exists := userGroups[entityName]; !exists {
+				userGroups[entityName] = entityGroups
+				handleGroupInheritance(db, entityName, entityGroups)
+			}
 			apiGroup := getAPIGroup(objectRef.ApiGroup, objectRef.ApiVersion)
 			resourceType := getResourceType(objectRef.Resource, objectRef.Subresource)
 			verb := row[1].(string)
@@ -114,10 +121,15 @@ func HandleAzureLogs(logEvents azquery.LogsClientQueryWorkspaceResponse, db *sql
 	fmt.Println("Azure Logs processed successfully!")
 }
 
+// func isAADObjectUUID(objectID string) bool {
+// 	aadUuidRegex := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+// 	return aadUuidRegex.MatchString(objectID)
+// }
+
 /*
 
-- check user in the log - if user doesn't exist in the table, add permissions for user based on group permissions. See if can map Azure users
-- cluster admin creds from azure = masterclient (in system:masters and system:authenticated)
+User.username is the OID for aad user, User.groups is a list of OID for aad AND kube groups
 
-- AAD object ID for cluster admin group is in permissions (also check clusterAdmin and clusterUser)
+Maybe add name resolution to AAD user/groups?
+
 */

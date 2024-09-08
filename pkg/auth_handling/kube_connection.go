@@ -61,5 +61,6 @@ func connectToLocal() (client *kubernetes.Clientset, err error) {
 		return nil, err
 	}
 
+	fmt.Printf("Connected to Cluster successfully!\n")
 	return clientset, nil
 }

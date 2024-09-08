@@ -56,7 +56,7 @@ func connectToGKE(cred *google.Credentials, clusterName, region, projectID strin
 			CAData: ca,
 		},
 	})
-
+	fmt.Printf("Connected to %+v successfully!\n", clusterName)
 	return clientset, nil
 }
 

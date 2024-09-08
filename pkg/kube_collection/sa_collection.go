@@ -15,7 +15,6 @@ func CollectServiceAccounts(client *kubernetes.Clientset, db *sql.DB) error {
 		return err
 	}
 
-	// Prepare the SQL statement to insert service accounts
 	stmt, err := db.Prepare("INSERT INTO permission (entity_name) VALUES (?)")
 	if err != nil {
 		return err
@@ -24,19 +23,15 @@ func CollectServiceAccounts(client *kubernetes.Clientset, db *sql.DB) error {
 
 	for _, ns := range nsList.Items {
 		nsName := ns.Name
-
-		// Get service accounts for the current namespace
 		saList, err := client.CoreV1().ServiceAccounts(nsName).List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
 			return err
 		}
 
-		// Iterate through service accounts and insert into the database
 		for _, sa := range saList.Items {
 			saName := sa.Name
 			key := fmt.Sprintf("%s:%s", nsName, saName)
 
-			// Insert the service account into the database
 			_, err = stmt.Exec(key)
 			if err != nil {
 				return err

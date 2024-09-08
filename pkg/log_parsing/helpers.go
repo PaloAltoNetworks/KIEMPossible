@@ -88,3 +88,95 @@ func updateDatabase(db *sql.DB, entityName, entityType, apiGroup, resourceType, 
 		os.Exit(1)
 	}
 }
+
+type PermissionRow struct {
+	entity_name             string
+	entity_type             string
+	api_group               string
+	resource_type           string
+	verb                    string
+	permission_scope        string
+	permission_source       string
+	permission_source_type  string
+	permission_binding      string
+	permission_binding_type string
+	last_used_time          sql.NullTime
+	last_used_resource      sql.NullString
+}
+
+func insertInheritedPermissionRow(db *sql.DB, row PermissionRow) error {
+	query := `
+        INSERT IGNORE INTO permission (
+            entity_name, entity_type, api_group, resource_type, verb, permission_scope,
+            permission_source, permission_source_type, permission_binding, permission_binding_type,
+            last_used_time, last_used_resource
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `
+
+	_, err := db.Exec(query,
+		row.entity_name, row.entity_type, row.api_group, row.resource_type, row.verb, row.permission_scope,
+		row.permission_source, row.permission_source_type, row.permission_binding, row.permission_binding_type,
+		row.last_used_time, row.last_used_resource,
+	)
+
+	return err
+}
+
+func handleGroupInheritance(db *sql.DB, username string, groups []string) {
+	var rowData []PermissionRow
+	for _, group := range groups {
+		rows, err := db.Query(`
+                SELECT entity_name, entity_type, api_group, resource_type, verb, permission_scope,
+                       permission_source, permission_source_type, permission_binding, permission_binding_type,
+                       last_used_time, last_used_resource
+                FROM permission
+                WHERE entity_name = ?
+            `, group)
+		if err != nil {
+			fmt.Printf("Error querying database: %v\n", err)
+			continue
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var row PermissionRow
+			err := rows.Scan(
+				&row.entity_name,
+				&row.entity_type,
+				&row.api_group,
+				&row.resource_type,
+				&row.verb,
+				&row.permission_scope,
+				&row.permission_source,
+				&row.permission_source_type,
+				&row.permission_binding,
+				&row.permission_binding_type,
+				&row.last_used_time,
+				&row.last_used_resource,
+			)
+			if err != nil {
+				fmt.Printf("Error scanning row: %v\n", err)
+				continue
+			}
+
+			row.entity_name = username
+			if strings.HasPrefix(username, "system:serviceaccount:") {
+				row.entity_type = "ServiceAccount"
+			} else {
+				row.entity_type = "User"
+			}
+			row.permission_source = group
+			row.permission_source_type = "Group"
+
+			rowData = append(rowData, row)
+		}
+	}
+
+	for _, row := range rowData {
+		err := insertInheritedPermissionRow(db, row)
+		if err != nil {
+			fmt.Printf("Error inserting inherited permission row: %v\n", err)
+		}
+	}
+}
