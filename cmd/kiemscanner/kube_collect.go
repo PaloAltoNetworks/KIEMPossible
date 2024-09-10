@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -9,10 +10,12 @@ import (
 	"github.com/Golansami125/clusterlogo/pkg/kube_collection"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"golang.org/x/oauth2/google"
+	v1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func KubeCollect(clusterName, clusterType string, sess *session.Session, azure_cred *azidentity.ClientSecretCredential, subscriptionID, resourceGroup string, gcp_cred *google.Credentials, region, projectID string, cred_file auth_handling.CredentialsPath) {
+func KubeCollect(clusterName, clusterType string, sess *session.Session, azure_cred *azidentity.ClientSecretCredential, subscriptionID, resourceGroup string, gcp_cred *google.Credentials, region, projectID string, cred_file auth_handling.CredentialsPath) *v1.NamespaceList {
 	clientset, err := auth_handling.KubeConnect(clusterName, clusterType, sess, azure_cred, subscriptionID, resourceGroup, gcp_cred, region, projectID, cred_file)
 	if err != nil {
 		fmt.Printf("error getting Kubernetes clientset: %v\n", err)
@@ -20,6 +23,10 @@ func KubeCollect(clusterName, clusterType string, sess *session.Session, azure_c
 	}
 	roles := make(map[string]*rbacv1.Role)
 	clusterRoles := make(map[string]*rbacv1.ClusterRole)
+	namespaces, err := clientset.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil
+	}
 
 	err = kube_collection.CollectRoles(clientset, &roles)
 	if err != nil {
@@ -50,5 +57,6 @@ func KubeCollect(clusterName, clusterType string, sess *session.Session, azure_c
 	if err != nil {
 		fmt.Println("Error storing RoleBindings permissions in the database:", err)
 	}
+	return namespaces
 
 }

@@ -4,25 +4,27 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/cheggaaa/pb"
+	v1 "k8s.io/api/core/v1"
 )
 
 func ExtractAWSLogs(sess *session.Session, clusterName string) ([]*cloudwatchlogs.FilteredLogEvent, error) {
 	cwl := cloudwatchlogs.New(sess)
 	logGroupName := fmt.Sprintf("/aws/eks/%s/cluster", clusterName)
 	now := time.Now()
-	start := now.AddDate(0, 0, -10)
+	start := now.AddDate(0, 0, -1)
 	startTime := start.UnixMilli()
 	endTime := now.UnixMilli()
 
 	var logEvents []*cloudwatchlogs.FilteredLogEvent
 	var nextToken *string
-	fmt.Println("Ingesting AWS Logs from %v to %v...", startTime, now)
+	fmt.Printf("Ingesting AWS Logs from %+v to now...\n", start)
 	bar := pb.StartNew(0)
 
 	for {
@@ -65,9 +67,12 @@ type AuditLogEvent struct {
 		APIVersion  string `json:"apiVersion"`
 	} `json:"objectRef"`
 	RequestReceivedTimestamp string `json:"requestReceivedTimestamp"`
+	Annotations              struct {
+		Reason string `json:"authorization.k8s.io/reason"`
+	} `json:"annotations"`
 }
 
-func HandleAWSLogs(logEvents []*cloudwatchlogs.FilteredLogEvent, db *sql.DB) {
+func HandleAWSLogs(logEvents []*cloudwatchlogs.FilteredLogEvent, db *sql.DB, sess *session.Session, clusterName string, namespaces *v1.NamespaceList) {
 	fmt.Println("Processing AWS Logs...")
 	bar := pb.StartNew(0)
 	userGroups := make(map[string][]string)
@@ -78,7 +83,9 @@ func HandleAWSLogs(logEvents []*cloudwatchlogs.FilteredLogEvent, db *sql.DB) {
 			fmt.Printf("Error parsing log event: %v\n", err)
 			continue
 		}
-
+		if strings.HasPrefix(auditLogEvent.Annotations.Reason, "EKS Access Policy") {
+			handleEKSAccessPolicy(auditLogEvent.User.Username, auditLogEvent.Annotations.Reason, clusterName, sess, db, namespaces)
+		}
 		entityName, entityType := getEntityNameAndType(auditLogEvent.User.Username)
 		entityGroups := auditLogEvent.User.Groups
 		if _, exists := userGroups[entityName]; !exists {

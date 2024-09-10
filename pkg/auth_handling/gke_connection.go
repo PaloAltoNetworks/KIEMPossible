@@ -28,7 +28,7 @@ func connectToGKE(cred *google.Credentials, clusterName, region, projectID strin
 		}
 		fmt.Printf("Failed to create Kubernetes client using InClusterConfig: %v\n", err)
 	} else {
-		fmt.Printf("No InCluster Config, Trying GKE Flow\n")
+		fmt.Printf("No InCluster Config, Trying GKE Flow...\n")
 	}
 	containerClient, err := container.NewClusterManagerClient(context.Background(), option.WithCredentials(cred))
 	if err != nil {

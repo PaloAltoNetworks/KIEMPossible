@@ -104,25 +104,6 @@ type PermissionRow struct {
 	last_used_resource      sql.NullString
 }
 
-func insertInheritedPermissionRow(db *sql.DB, row PermissionRow) error {
-	query := `
-        INSERT IGNORE INTO permission (
-            entity_name, entity_type, api_group, resource_type, verb, permission_scope,
-            permission_source, permission_source_type, permission_binding, permission_binding_type,
-            last_used_time, last_used_resource
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `
-
-	_, err := db.Exec(query,
-		row.entity_name, row.entity_type, row.api_group, row.resource_type, row.verb, row.permission_scope,
-		row.permission_source, row.permission_source_type, row.permission_binding, row.permission_binding_type,
-		row.last_used_time, row.last_used_resource,
-	)
-
-	return err
-}
-
 func handleGroupInheritance(db *sql.DB, username string, groups []string) {
 	var rowData []PermissionRow
 	for _, group := range groups {
@@ -179,4 +160,23 @@ func handleGroupInheritance(db *sql.DB, username string, groups []string) {
 			fmt.Printf("Error inserting inherited permission row: %v\n", err)
 		}
 	}
+}
+
+func insertInheritedPermissionRow(db *sql.DB, row PermissionRow) error {
+	query := `
+        INSERT IGNORE INTO permission (
+            entity_name, entity_type, api_group, resource_type, verb, permission_scope,
+            permission_source, permission_source_type, permission_binding, permission_binding_type,
+            last_used_time, last_used_resource
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `
+
+	_, err := db.Exec(query,
+		row.entity_name, row.entity_type, row.api_group, row.resource_type, row.verb, row.permission_scope,
+		row.permission_source, row.permission_source_type, row.permission_binding, row.permission_binding_type,
+		row.last_used_time, row.last_used_resource,
+	)
+
+	return err
 }

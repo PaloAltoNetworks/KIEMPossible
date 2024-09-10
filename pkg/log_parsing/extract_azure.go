@@ -24,7 +24,7 @@ func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName strin
 	startTime := endTime.Add(-10 * 24 * time.Hour)
 	totalDuration := endTime.Sub(startTime)
 
-	fmt.Printf("Ingesting Azure Logs from %v to %v...\n", startTime, endTime)
+	fmt.Printf("Ingesting Azure Logs from %+v to %+v...\n", startTime, endTime)
 	progressBar := pb.StartNew(int(totalDuration.Hours()))
 
 	for start := startTime; start.Before(endTime); start = start.Add(1 * time.Hour) {

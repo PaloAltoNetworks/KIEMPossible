@@ -16,12 +16,17 @@ import (
 func KubeConnect(clusterName string, clusterType string, aws_sess *session.Session, azure_cred *azidentity.ClientSecretCredential, Sub, RG string, gcp_cred *google.Credentials, region, projectID string, cred_file CredentialsPath) (client *kubernetes.Clientset, err error) {
 	switch clusterType {
 	case "EKS":
+		fmt.Printf("\x1b[1;31m\x1b[38;5;208m-------\nEKS Mode\n-------\x1b[0m\n")
 		return connectToEKS(aws_sess, clusterName)
 	case "AKS":
+		fmt.Printf("\x1b[1;34m-------\nAKS Mode\n-------\x1b[0m\n")
 		return connectToAKS(azure_cred, clusterName, Sub, RG)
 	case "GKE":
+		fmt.Printf("\x1b[1;32m-------\nGKE Mode\n-------\x1b[0m\n")
+		fmt.Printf("Not configured to get GKE logs yet...\n")
 		return connectToGKE(gcp_cred, clusterName, region, projectID, cred_file)
 	case "LOCAL":
+		fmt.Printf("\x1b[1;35m-------\nLocal Mode\n-------\x1b[0m\n")
 		return connectToLocal()
 	default:
 		return nil, fmt.Errorf("unsupported cluster type: %s", clusterType)
@@ -38,7 +43,7 @@ func connectToLocal() (client *kubernetes.Clientset, err error) {
 		}
 		fmt.Printf("Failed to create Kubernetes client using InClusterConfig: %v\n", err)
 	} else {
-		fmt.Printf("InClusterConfig is not available: %v\n", err)
+		fmt.Printf("No InCluster Config, Trying with KubeConfig...\n")
 	}
 
 	// Fallback to kubeconfig

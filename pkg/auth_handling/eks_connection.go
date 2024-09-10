@@ -23,7 +23,7 @@ func connectToEKS(sess *session.Session, clusterName string) (client *kubernetes
 		}
 		fmt.Printf("Failed to create Kubernetes client using InClusterConfig: %v\n", err)
 	} else {
-		fmt.Printf("No InCluster Config, Trying EKS Flow\n")
+		fmt.Printf("No InCluster Config, Trying EKS Flow...\n")
 	}
 	eksSvc := eks.New(sess)
 	input := &eks.DescribeClusterInput{
