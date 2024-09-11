@@ -21,7 +21,7 @@ func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName strin
 
 	var logEvents azquery.LogsClientQueryWorkspaceResponse
 	endTime := time.Now()
-	startTime := endTime.Add(-10 * 24 * time.Hour)
+	startTime := endTime.Add(-7 * 24 * time.Hour)
 	totalDuration := endTime.Sub(startTime)
 
 	fmt.Printf("Ingesting Azure Logs from %+v to %+v...\n", startTime, endTime)
@@ -120,16 +120,3 @@ func HandleAzureLogs(logEvents azquery.LogsClientQueryWorkspaceResponse, db *sql
 	bar.Finish()
 	fmt.Println("Azure Logs processed successfully!")
 }
-
-// func isAADObjectUUID(objectID string) bool {
-// 	aadUuidRegex := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-// 	return aadUuidRegex.MatchString(objectID)
-// }
-
-/*
-
-User.username is the OID for aad user, User.groups is a list of OID for aad AND kube groups
-
-Maybe add name resolution to AAD user/groups?
-
-*/

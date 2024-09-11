@@ -13,6 +13,7 @@ import (
 )
 
 func ExtractLocalLogs(logFile string) ([]auditv1.Event, error) {
+	fmt.Printf("Ingesting Local Logs...\n")
 	file, err := os.Open(logFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %v", err)
@@ -54,7 +55,7 @@ func parseLines(data []byte) [][]byte {
 }
 
 func HandleLocalLogs(logEvents []auditv1.Event, db *sql.DB) {
-	fmt.Println("Processing Log File...")
+	fmt.Println("Processing Local Logs...")
 	bar := pb.StartNew(0)
 	userGroups := make(map[string][]string)
 	for _, event := range logEvents {

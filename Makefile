@@ -1,4 +1,4 @@
-EXECUTABLE=KIEMScanner
+EXECUTABLE=KIEMPossible
 LINUX=$(EXECUTABLE)
 DARWIN=$(EXECUTABLE)_darwin_amd64
 VERSION=$(shell git describe --tags --always --long --dirty)
@@ -8,10 +8,10 @@ linux: $(LINUX) ## Build for Linux
 darwin: $(DARWIN) ## Build for Darwin (macOS)
 
 $(LINUX):
-	env GOOS=linux GOARCH=amd64 go build -v -o ./bin/$(LINUX) -ldflags="-s -w -X main.version=$(VERSION)"  ./cmd/kiemscanner/*.go
+	env GOOS=linux GOARCH=amd64 go build -v -o ./bin/$(LINUX) -ldflags="-s -w -X main.version=$(VERSION)"  ./cmd/kiempossible/*.go
 
 $(DARWIN):
-	env GOOS=darwin GOARCH=amd64 go build -v -o ./bin/$(DARWIN) -ldflags="-s -w -X main.version=$(VERSION)"  ./cmd/kiemscanner/*.go
+	env GOOS=darwin GOARCH=amd64 go build -v -o ./bin/$(DARWIN) -ldflags="-s -w -X main.version=$(VERSION)"  ./cmd/kiempossible/*.go
 
 build: linux darwin ## Build binaries
 	@echo version: $(VERSION)

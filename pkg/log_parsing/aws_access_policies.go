@@ -38,11 +38,11 @@ func handleEKSAccessPolicy(entityName, reason, clusterName string, sess *session
 	policyNames, accessScopes := listAssociatedAccessPolicies(clusterName, accessEntryArn, sess)
 	for i, policyName := range policyNames {
 		if policyName == "AmazonEKSClusterAdminPolicy" {
-			handleEKSClusterAdminPolicy(entityName, accessEntryArn, accessScopes[i], db)
+			handleEKSClusterAdminPolicy(entityName, accessEntryArn, accessScopes[i], namespaces, db)
 			continue
 		}
 		if policyName == "AmazonEKSAdminViewPolicy" {
-			handleEKSAdminViewPolicy(entityName, accessEntryArn, accessScopes[i], db)
+			handleEKSAdminViewPolicy(entityName, accessEntryArn, accessScopes[i], namespaces, db)
 			continue
 		}
 		if policyName == "AmazonEKSEditPolicy" {
@@ -105,7 +105,7 @@ func getAccessScope(accessScope *eks.AccessScope) string {
 	return strings.Join(namespaces, ",")
 }
 
-func handleEKSClusterAdminPolicy(entityName, accessEntryArn, accessScope string, db *sql.DB) {
+func handleEKSClusterAdminPolicy(entityName, accessEntryArn, accessScope string, namespaces *v1.NamespaceList, db *sql.DB) {
 	query := `
         SELECT api_group, resource_type, permission_scope, verb
         FROM permission
@@ -126,18 +126,34 @@ func handleEKSClusterAdminPolicy(entityName, accessEntryArn, accessScope string,
 			fmt.Println("Error scanning row:", err)
 			continue
 		}
-		if accessScope == "cluster" || permissionScope == accessScope {
-			_, err = db.Exec(`
-                INSERT INTO permission (
-                    entity_name, entity_type, api_group, resource_type, verb, permission_scope,
-                    permission_source, permission_source_type, permission_binding, permission_binding_type,
-                    last_used_time, last_used_resource
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `, entityName, "User", apiGroup, resourceType, verb, permissionScope, "AmazonEKSClusterAdminPolicy", "EKS Access Policy", accessEntryArn, "EKS Access Entry", nil, nil)
-			if err != nil {
-				fmt.Println("Error inserting row:", err)
+
+		isClusterWide := permissionScope == "cluster-wide"
+		matchesAccessScope := permissionScope == accessScope
+		if accessScope == "cluster" {
+			matchesNamespace := false
+			for _, ns := range namespaces.Items {
+				if permissionScope == ns.Name {
+					matchesNamespace = true
+					break
+				}
+			}
+			if !matchesNamespace && !isClusterWide {
 				continue
 			}
+		} else if !matchesAccessScope {
+			continue
+		}
+
+		_, err = db.Exec(`
+            INSERT INTO permission (
+                entity_name, entity_type, api_group, resource_type, verb, permission_scope,
+                permission_source, permission_source_type, permission_binding, permission_binding_type,
+                last_used_time, last_used_resource
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, entityName, "User", apiGroup, resourceType, verb, permissionScope, "AmazonEKSClusterAdminPolicy", "EKS Access Policy", accessEntryArn, "EKS Access Entry", nil, nil)
+		if err != nil {
+			fmt.Println("Error inserting row:", err)
+			continue
 		}
 	}
 
@@ -146,7 +162,7 @@ func handleEKSClusterAdminPolicy(entityName, accessEntryArn, accessScope string,
 	}
 }
 
-func handleEKSAdminViewPolicy(entityName, accessEntryArn, accessScope string, db *sql.DB) {
+func handleEKSAdminViewPolicy(entityName, accessEntryArn, accessScope string, namespaces *v1.NamespaceList, db *sql.DB) {
 	query := `
         SELECT api_group, resource_type, permission_scope, verb
         FROM permission
@@ -168,18 +184,33 @@ func handleEKSAdminViewPolicy(entityName, accessEntryArn, accessScope string, db
 			fmt.Println("Error scanning row:", err)
 			continue
 		}
-		if accessScope == "cluster" || permissionScope == accessScope {
-			_, err = db.Exec(`
-                INSERT INTO permission (
-                    entity_name, entity_type, api_group, resource_type, verb, permission_scope,
-                    permission_source, permission_source_type, permission_binding, permission_binding_type,
-                    last_used_time, last_used_resource
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `, entityName, "User", apiGroup, resourceType, verb, permissionScope, "AmazonEKSAdminViewPolicy", "EKS Access Policy", accessEntryArn, "EKS Access Entry", nil, nil)
-			if err != nil {
-				fmt.Println("Error inserting row:", err)
+		isClusterWide := permissionScope == "cluster-wide"
+		matchesAccessScope := permissionScope == accessScope
+		if accessScope == "cluster" {
+			matchesNamespace := false
+			for _, ns := range namespaces.Items {
+				if permissionScope == ns.Name {
+					matchesNamespace = true
+					break
+				}
+			}
+			if !matchesNamespace && !isClusterWide {
 				continue
 			}
+		} else if !matchesAccessScope {
+			continue
+		}
+
+		_, err = db.Exec(`
+            INSERT INTO permission (
+                entity_name, entity_type, api_group, resource_type, verb, permission_scope,
+                permission_source, permission_source_type, permission_binding, permission_binding_type,
+                last_used_time, last_used_resource
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, entityName, "User", apiGroup, resourceType, verb, permissionScope, "AmazonEKSClusterAdminPolicy", "EKS Access Policy", accessEntryArn, "EKS Access Entry", nil, nil)
+		if err != nil {
+			fmt.Println("Error inserting row:", err)
+			continue
 		}
 	}
 
@@ -202,6 +233,7 @@ func handleStaticPolicy(entityName, accessEntryArn, accessScope string, eksEditP
 		if accessScope == "cluster" {
 			for _, ns := range namespaces.Items {
 				nsName := ns.Name
+				// No need to handle cluster-wide scope from DB for now cause the static policies only have namespaced resources
 				for _, verb := range verbs {
 					_, err := db.Exec(`
                         INSERT INTO permission (

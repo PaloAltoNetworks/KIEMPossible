@@ -1,6 +1,6 @@
-CREATE DATABASE IF NOT EXISTS clusterlogo;
+CREATE DATABASE IF NOT EXISTS rufus;
 
-CREATE TABLE IF NOT EXISTS clusterlogo.permission (
+CREATE TABLE IF NOT EXISTS rufus.permission (
     id INT AUTO_INCREMENT PRIMARY KEY,
     entity_name VARCHAR(100) NOT NULL,
     entity_type VARCHAR(30) NOT NULL,

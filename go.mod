@@ -1,4 +1,4 @@
-module github.com/Golansami125/clusterlogo
+module github.com/Golansami125/kiempossible
 
 go 1.22.5
 
