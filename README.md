@@ -17,18 +17,18 @@ KIEMPossible is a tool designed to simplify Kubernetes Identity Entitlement Mana
 ## Requirements
 #### AWS
 - Name of the target cluster
-- A credentials file (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, AWS_REGION)
+- A credentials file (`AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, AWS_REGION`)
 - Permissions to get EKS credentials (within the cluster the needed permissions are get on Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces)
-- Audit logging configured for the cluster (EKS->Cluster->Observability->Manage Logging->Audit) and permissions to retrieve the logs 
+- Audit logging configured for the cluster (`EKS->Cluster->Observability->Manage Logging->Audit`) and permissions to retrieve the logs 
 
 #### AZURE
 - Name of the target cluster
-- A credentials file (AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET)
+- A credentials file (`AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET`)
 - Name of the Resource Group in which the cluster is deployed
 - Subscription ID of the Subscription in which the cluster is deployed
 - Workspace ID of the Log Analytics Workspace which acts as the audit logs destination
 - Permissions to get AKS credentials - at present Local Kubernetes Accounts must be enabled to retrieve the credentials (within the cluster the needed permissions are get on Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces)
-- Audit logging configured for the cluster (AKS->Cluster->Monitoring->Diagnostic Settings->Kubernetes Audit) and permissions to retrieve the logs
+- Audit logging configured for the cluster (`AKS->Cluster->Monitoring->Diagnostic Settings->Kubernetes Audit`) and permissions to retrieve the logs
 
 #### GCP
 - While the majority of the logic exists, GCP is not currently fully supported due to the rate limit enforced for the Logging API
@@ -37,24 +37,24 @@ KIEMPossible is a tool designed to simplify Kubernetes Identity Entitlement Mana
 - Name of the target cluster
 - A valid KubeConfig file located at `~/.kube/config`
 - Cluster permissions: get on Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces
-- A valid Audit Log file in the standard Kubernetes format (for more information on how to enable etc: https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/)
+- A valid Audit Log file in the standard Kubernetes format (for more information: https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/)
 
 
 ## Basic queries
 #### Database Structure
 The database table is structured with the following fields: 
-- entity_name - Name of the entity with the permission
-- entity_type - Type of the entity with the permission
-- api_group - API Group of the resource
-- resource_type - The resource or subresource type
-- verb - The action
-- permission_scope - cluster-wide, resourceName, namespace or namespace/resourceName
-- permission_source - The name of the permission grantor
-- permission_source_type - The type of grantor (Role, ClusterRole, EKS Access Policy or Group)
-- permission_binding - The name of the binding. When permission_source is a group, this is the object that binds the permissions to the group
-- permission_binding_type - The type of binding (RoleBinding, ClusterRoleBinding, EKS Access Entry)
-- last_used_time - Timestamp of the last usage of the permission within the examined timespan
-- last_used_resource - The resource on which the permission was last used within the examined timespan
+- `entity_name` - Name of the entity with the permission
+- `entity_type` - Type of the entity with the permission
+- `api_group` - API Group of the resource
+- `resource_type` - The resource or subresource type
+- `verb` - The action
+- `permission_scope` - cluster-wide, resourceName, namespace or namespace/resourceName
+- `permission_source` - The name of the permission grantor
+- `permission_source_type` - The type of grantor (Role, ClusterRole, EKS Access Policy or Group)
+- `permission_binding` - The name of the binding. When permission_source is a group, this is the object that binds the permissions to the group
+- `permission_binding_type` - The type of binding (RoleBinding, ClusterRoleBinding, EKS Access Entry)
+- `last_used_time` - Timestamp of the last usage of the permission within the examined timespan
+- `last_used_resource` - The resource on which the permission was last used within the examined timespan
 
 #### Get all permissions for AWS entities:
 ```select * from permission where entity_name REGEXP '^arn';```
