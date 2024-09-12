@@ -1,7 +1,6 @@
 /*
 
 VALIDATION
-- Check AWS access policies that are based on list
 - verify permissions needed within the cluster
 
 */
