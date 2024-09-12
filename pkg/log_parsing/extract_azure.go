@@ -21,7 +21,7 @@ func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName strin
 
 	var logEvents azquery.LogsClientQueryWorkspaceResponse
 	endTime := time.Now()
-	startTime := endTime.Add(-7 * 24 * time.Hour)
+	startTime := endTime.Add(-5 * 24 * time.Hour)
 	totalDuration := endTime.Sub(startTime)
 
 	fmt.Printf("Ingesting Azure Logs from %+v to %+v...\n", startTime, endTime)

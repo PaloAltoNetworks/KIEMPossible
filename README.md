@@ -10,8 +10,8 @@ KIEMPossible is a tool designed to simplify Kubernetes Identity Entitlement Mana
 - `docker-compose up -d` - Spins up a mysql server on a Docker container, accessible at 127.0.0.1:3306 (mysql -u mysql -p -h 127.0.0.1, default password is 'mysql')
 - `make darwin` - Creates a MacOS (amd64) executable in the /bin folder (KIEMPossible_darwin_amd64)
 - `make linux` - Creates a Linux (amd64) executable in the /bin folder (KIEMPossible_linux_amd64)
-- `KIEMPossible_darwin_amd64 [command] [options]` - Run MacOS version, command is the provider
-- `KIEMPossible_linux_amd64 [command] [options]` - Run Linux version, command is the provider
+- `KIEMPossible_darwin [command] [options]` - Run MacOS version, command is the provider
+- `KIEMPossible [command] [options]` - Run Linux version, command is the provider
 - `--help or [command] --help` - Help menu for the binary and the individual commands 
 
 ## Requirements
@@ -62,7 +62,7 @@ The database table is structured with the following fields:
 #### Get all permissions for AAD entities (entity_name == objectID):
 ```select * from permission where entity_name REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';```
 
-#### Get all permissions which have a record of being used in the observed timespan (7 days by default):
+#### Get all permissions which have a record of being used in the observed timespan (5 days by default):
 ```select * from permission where last_used_time is not null;```
 
 #### Get all members of a group:
@@ -85,6 +85,6 @@ So what actually happens when you run KIEMPossible?
 There are still certain blind spots to which we must be vigilant:
 - A user who's permissions are gained through group inheritance and does not appear in the logs will not appear in the DB
 - Logging happens at the API Server level, therfore direct interaction with the Kubelet will not appear in the DB
-- Permissions the tool calculated through logs (Group inheritance and EKS Access Entries) may contain inaccuracies if the permissions were altered within the timeframe of the configured scan (default is 7 days)
+- Permissions the tool calculated through logs (Group inheritance and EKS Access Entries) may contain inaccuracies if the permissions were altered within the timeframe of the configured scan (5 days by default)
 - EKS Access Entries for Service-Linked Roles are not currently supported
 - At present, KIEMPossible's rate is roughly 15 minutes per 1 Million logs in AWS and Azure. We are currently working to improve this

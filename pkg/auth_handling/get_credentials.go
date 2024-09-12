@@ -47,24 +47,20 @@ func Authenticator() (CredentialsPath, ClusterInfo, string) {
 	var gcpCmd = flag.NewFlagSet("gcp", flag.ExitOnError)
 	var localCmd = flag.NewFlagSet("local", flag.ExitOnError)
 
-	// AWS flags
 	awsCredentialsFile := awsCmd.String("credentials-file", "", "AWS credentials file path including the 'AWS_REGION=' variable")
 	awsClusterName := awsCmd.String("cluster-name", "", "AWS cluster name")
 
-	// Azure flags
 	azureCredentialsFile := azureCmd.String("credentials-file", "", "Path to a File with SP Credentials, Structure is:\nAZURE_TENANT_ID=<tenant_id>\nAZURE_CLIENT_ID=<client_id>\nAZURE_CLIENT_SECRET=<secret>")
 	azureClusterName := azureCmd.String("cluster-name", "", "Azure cluster name")
 	azureWorkspaceID := azureCmd.String("workspace-id", "", "Azure log analytics workspace ID")
 	azureSubscriptionID := azureCmd.String("sub-id", "", "Azure subscription ID")
 	azureResourceGroup := azureCmd.String("rg", "", "Azure resource group")
 
-	// GCP flags
 	gcpCredentialsFile := gcpCmd.String("credentials-file", "", "GCP credentials file path to a service account JSON key file")
 	gcpClusterName := gcpCmd.String("cluster-name", "", "GCP cluster name")
 	gcpProjectID := gcpCmd.String("project-id", "", "GCP project id")
 	gcpRegion := gcpCmd.String("region", "", "GCP region")
 
-	// Local flags
 	logFile := localCmd.String("log-file", "", "Path to log file")
 
 	var args []string

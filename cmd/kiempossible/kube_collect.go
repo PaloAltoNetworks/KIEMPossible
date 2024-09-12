@@ -25,16 +25,17 @@ func KubeCollect(clusterName, clusterType string, sess *session.Session, azure_c
 	clusterRoles := make(map[string]*rbacv1.ClusterRole)
 	namespaces, err := clientset.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
+		fmt.Println("Error in Namespace collection", err)
 		return nil
 	}
 
 	err = kube_collection.CollectRoles(clientset, &roles)
 	if err != nil {
-		panic(err.Error())
+		fmt.Println("Error in Role collection", err)
 	}
 	err = kube_collection.CollectClusterRoles(clientset, &clusterRoles)
 	if err != nil {
-		panic(err.Error())
+		fmt.Println("Error in ClusterRole collection", err)
 	}
 
 	DB, err := auth_handling.DBConnect()

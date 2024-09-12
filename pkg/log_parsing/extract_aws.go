@@ -18,7 +18,7 @@ func ExtractAWSLogs(sess *session.Session, clusterName string) ([]*cloudwatchlog
 	cwl := cloudwatchlogs.New(sess)
 	logGroupName := fmt.Sprintf("/aws/eks/%s/cluster", clusterName)
 	now := time.Now()
-	start := now.AddDate(0, 0, -7)
+	start := now.AddDate(0, 0, -1)
 	startTime := start.UnixMilli()
 	endTime := now.UnixMilli()
 

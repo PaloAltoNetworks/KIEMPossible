@@ -39,7 +39,6 @@ func GetResourceTypesAndAPIGroups(client *kubernetes.Clientset) ([]ResourceType,
 func FlattenWildcards(resourceTypes []ResourceType, verb, resource, apiGroup string) ([]ResourceType, error) {
 	var flattenedResourceTypes []ResourceType
 	if verb == "*" && resource == "*" {
-		// Return all possible combinations of verbs and resource types
 		for _, rt := range resourceTypes {
 			verbs, err := GetVerbsForResourceType(rt.ResourceType)
 			if err != nil {
@@ -55,7 +54,6 @@ func FlattenWildcards(resourceTypes []ResourceType, verb, resource, apiGroup str
 			}
 		}
 	} else if verb == "*" {
-		// Flatten the verb to all possible verbs for the given resource type
 		for _, rt := range resourceTypes {
 			if rt.ResourceType == resource {
 				verbs, err := GetVerbsForResourceType(rt.ResourceType)

@@ -222,7 +222,7 @@ func handleEKSAdminViewPolicy(entityName, accessEntryArn, accessScope string, na
 func handleStaticPolicy(entityName, accessEntryArn, accessScope string, eksEditPolicyPermissions []string, namespaces *v1.NamespaceList, db *sql.DB) {
 	for _, permission := range eksEditPolicyPermissions {
 		parts := strings.Split(permission, ":")
-		if len(parts) != 2 {
+		if len(parts) != 3 {
 			fmt.Println("Invalid permission format:", permission)
 			continue
 		}

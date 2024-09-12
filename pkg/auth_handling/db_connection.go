@@ -12,7 +12,7 @@ var DB *sql.DB
 func DBConnect() (*sql.DB, error) {
 	dbUser := "mysql"
 	dbPass := "mysql"
-	dbName := "clusterlogo"
+	dbName := "rufus"
 
 	dsn := fmt.Sprintf("%s:%s@tcp(localhost:3306)/%s", dbUser, dbPass, dbName)
 
@@ -22,7 +22,6 @@ func DBConnect() (*sql.DB, error) {
 		return nil, err
 	}
 
-	// Ping the database to verify the connection
 	err = DB.Ping()
 	if err != nil {
 		fmt.Println("Error pinging database:", err)

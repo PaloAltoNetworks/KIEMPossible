@@ -1,11 +1,11 @@
 EXECUTABLE=KIEMPossible
 LINUX=$(EXECUTABLE)
-DARWIN=$(EXECUTABLE)_darwin_amd64
+DARWIN=$(EXECUTABLE)_darwin
 VERSION=$(shell git describe --tags --always --long --dirty)
 
-linux: $(LINUX) ## Build for Linux
+linux: $(LINUX) 
 
-darwin: $(DARWIN) ## Build for Darwin (macOS)
+darwin: $(DARWIN) 
 
 $(LINUX):
 	env GOOS=linux GOARCH=amd64 go build -v -o ./bin/$(LINUX) -ldflags="-s -w -X main.version=$(VERSION)"  ./cmd/kiempossible/*.go
@@ -13,18 +13,13 @@ $(LINUX):
 $(DARWIN):
 	env GOOS=darwin GOARCH=amd64 go build -v -o ./bin/$(DARWIN) -ldflags="-s -w -X main.version=$(VERSION)"  ./cmd/kiempossible/*.go
 
-build: linux darwin ## Build binaries
+build: linux darwin 
 	@echo version: $(VERSION)
 
-all: test build ## Build and run tests
+clean: 
+	rm -f ./bin/$(LINUX)*
 
-test: ## Run unit tests
-	go test ./...
+.PHONY: clean
 
-clean: ## Remove previous build
-	rm -f $(LINUX) $(DARWIN)
-
-.PHONY: all test clean
-
-help: ## Display available commands
+help: 
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'

@@ -46,7 +46,6 @@ func connectToLocal() (client *kubernetes.Clientset, err error) {
 		fmt.Printf("No InCluster Config, Trying with KubeConfig...\n")
 	}
 
-	// Fallback to kubeconfig
 	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Printf("error getting user home dir: %v\n", err)
