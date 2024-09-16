@@ -62,7 +62,7 @@ The database table is structured with the following fields:
 #### Get all permissions for AAD entities (entity_name == objectID):
 ```select * from permission where entity_name REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';```
 
-#### Get all permissions which have a record of being used in the observed timespan (5 days by default):
+#### Get all permissions which have a record of being used in the observed timespan (7 days by default):
 ```select * from permission where last_used_time is not null;```
 
 #### Get all members of a group:
@@ -85,6 +85,8 @@ So what actually happens when you run KIEMPossible?
 There are still certain blind spots to which we must be vigilant:
 - A user who's permissions are gained through group inheritance and does not appear in the logs will not appear in the DB
 - Logging happens at the API Server level, therfore direct interaction with the Kubelet will not appear in the DB
-- Permissions the tool calculated through logs (Group inheritance and EKS Access Entries) may contain inaccuracies if the permissions were altered within the timeframe of the configured scan (5 days by default)
+- Permissions the tool calculated through logs (Group inheritance and EKS Access Entries) may contain inaccuracies if the permissions were altered within the timeframe of the configured scan (7 days by default)
 - EKS Access Entries for Service-Linked Roles are not currently supported
 - At present, KIEMPossible's rate is roughly 15 minutes per 1 Million logs in AWS and Azure. We are currently working to improve this
+
+AWS - rate is 1 minute for fetching 1 Million Logs, ~ 1 minute for 0.5 million processing

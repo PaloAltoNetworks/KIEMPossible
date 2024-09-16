@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -18,37 +19,68 @@ func ExtractAWSLogs(sess *session.Session, clusterName string) ([]*cloudwatchlog
 	cwl := cloudwatchlogs.New(sess)
 	logGroupName := fmt.Sprintf("/aws/eks/%s/cluster", clusterName)
 	now := time.Now()
-	start := now.AddDate(0, 0, -1)
+	start := now.AddDate(0, 0, -7)
 	startTime := start.UnixMilli()
 	endTime := now.UnixMilli()
-
-	var logEvents []*cloudwatchlogs.FilteredLogEvent
-	var nextToken *string
 	fmt.Printf("Ingesting AWS Logs from %+v to now...\n", start)
+
+	var wg sync.WaitGroup
+	logEventsChan := make(chan []*cloudwatchlogs.FilteredLogEvent)
+	errorChan := make(chan error)
+
 	bar := pb.StartNew(0)
 
-	for {
-		filterLogEventsOutput, err := cwl.FilterLogEvents(&cloudwatchlogs.FilterLogEventsInput{
-			StartTime:           aws.Int64(startTime),
-			EndTime:             aws.Int64(endTime),
-			LogGroupName:        aws.String(logGroupName),
-			LogStreamNamePrefix: aws.String("kube-apiserver-audit-"),
-			NextToken:           nextToken,
-			FilterPattern:       aws.String(`{ $.stage = "ResponseComplete" && $.responseStatus.code = 200 }`),
-		})
-		if err != nil {
-			return nil, err
-		}
-		logEvents = append(logEvents, filterLogEventsOutput.Events...)
-		bar.Add(len(filterLogEventsOutput.Events))
-
-		if filterLogEventsOutput.NextToken == nil {
-			break
-		}
-		nextToken = filterLogEventsOutput.NextToken
+	for start := startTime; start < endTime; start += 24 * 60 * 60 * 1000 {
+		wg.Add(1)
+		go func(start int64) {
+			defer wg.Done()
+			var nextToken *string
+			localLogEvents := []*cloudwatchlogs.FilteredLogEvent{}
+			for {
+				filterLogEventsOutput, err := cwl.FilterLogEvents(&cloudwatchlogs.FilterLogEventsInput{
+					StartTime:           aws.Int64(start),
+					EndTime:             aws.Int64(min(start+24*60*60*1000, endTime)),
+					LogGroupName:        aws.String(logGroupName),
+					LogStreamNamePrefix: aws.String("kube-apiserver-audit-"),
+					NextToken:           nextToken,
+					FilterPattern:       aws.String(`{ $.stage = "ResponseComplete" && $.responseStatus.code = 200 }`),
+				})
+				if err != nil {
+					errorChan <- err
+					return
+				}
+				localLogEvents = append(localLogEvents, filterLogEventsOutput.Events...)
+				bar.Add(len(filterLogEventsOutput.Events))
+				if filterLogEventsOutput.NextToken == nil {
+					break
+				}
+				nextToken = filterLogEventsOutput.NextToken
+			}
+			logEventsChan <- localLogEvents
+		}(start)
 	}
-	bar.Finish()
-	return logEvents, nil
+
+	go func() {
+		wg.Wait()
+		close(logEventsChan)
+		close(errorChan)
+	}()
+
+	var logEvents []*cloudwatchlogs.FilteredLogEvent
+
+	for {
+		select {
+		case localEvents, ok := <-logEventsChan:
+			if !ok {
+				bar.Finish()
+				return logEvents, nil
+			}
+			logEvents = append(logEvents, localEvents...)
+		case err := <-errorChan:
+			bar.Finish()
+			return nil, fmt.Errorf("error occurred during log extraction: %v", err)
+		}
+	}
 }
 
 type AuditLogEvent struct {
@@ -72,10 +104,22 @@ type AuditLogEvent struct {
 	} `json:"annotations"`
 }
 
+type UpdateData struct {
+	EntityName       string
+	EntityType       string
+	APIGroup         string
+	ResourceType     string
+	Verb             string
+	PermissionScope  string
+	LastUsedTime     string
+	LastUsedResource string
+}
+
 func HandleAWSLogs(logEvents []*cloudwatchlogs.FilteredLogEvent, db *sql.DB, sess *session.Session, clusterName string, namespaces *v1.NamespaceList) {
 	fmt.Println("Processing AWS Logs...")
-	bar := pb.StartNew(0)
+	bar := pb.StartNew(len(logEvents))
 	userGroups := make(map[string][]string)
+	var updateDataList []UpdateData
 	for _, event := range logEvents {
 		var auditLogEvent AuditLogEvent
 		err := json.Unmarshal([]byte(*event.Message), &auditLogEvent)
@@ -98,10 +142,81 @@ func HandleAWSLogs(logEvents []*cloudwatchlogs.FilteredLogEvent, db *sql.DB, ses
 		permissionScope := getPermissionScope(auditLogEvent.ObjectRef.Namespace, auditLogEvent.ObjectRef.Name)
 		lastUsedTime := getLastUsedTime(auditLogEvent.RequestReceivedTimestamp)
 		lastUsedResource := getLastUsedResource(auditLogEvent.ObjectRef.Namespace, resourceType, auditLogEvent.ObjectRef.Name)
-		updateDatabase(db, entityName, entityType, apiGroup, resourceType, verb, permissionScope, lastUsedTime, lastUsedResource)
 
+		updateDataList = append(updateDataList, UpdateData{
+			EntityName:       entityName,
+			EntityType:       entityType,
+			APIGroup:         apiGroup,
+			ResourceType:     resourceType,
+			Verb:             verb,
+			PermissionScope:  permissionScope,
+			LastUsedTime:     lastUsedTime,
+			LastUsedResource: lastUsedResource,
+		})
 		bar.Increment()
 	}
 	bar.Finish()
 	fmt.Println("AWS Logs processed successfully!")
+	batchUpdateDatabase(db, updateDataList)
+}
+
+func batchUpdateDatabase(db *sql.DB, updateDataList []UpdateData) {
+	fmt.Println("Attempting to update DB in batches...")
+	const batchSize = 10000
+	totalBatches := (len(updateDataList) + batchSize - 1) / batchSize
+	bar := pb.StartNew(totalBatches)
+
+	for i := 0; i < totalBatches; i++ {
+		start := i * batchSize
+		end := start + batchSize
+		if end > len(updateDataList) {
+			end = len(updateDataList)
+		}
+
+		batch := updateDataList[start:end]
+		tx, err := db.Begin()
+		if err != nil {
+			fmt.Printf("Error starting transaction: %v\n", err)
+			return
+		}
+
+		query := `
+			UPDATE permission
+			SET last_used_time = ?, last_used_resource = ?
+			WHERE entity_name = ? AND entity_type = ? AND api_group = ? AND resource_type = ? AND verb = ? 
+			AND (last_used_time < ? OR last_used_time IS NULL)
+			AND (
+				permission_scope = ? OR
+				(permission_scope like SUBSTRING_INDEX(?, '/', 1) AND ? LIKE '%/%')
+			)
+		`
+
+		stmt, err := tx.Prepare(query)
+		if err != nil {
+			fmt.Printf("Error preparing statement: %v\n", err)
+			tx.Rollback()
+			return
+		}
+		defer stmt.Close()
+
+		for _, data := range batch {
+			_, err = stmt.Exec(data.LastUsedTime, data.LastUsedResource, data.EntityName, data.EntityType, data.APIGroup, data.ResourceType, data.Verb, data.LastUsedTime, data.PermissionScope, data.PermissionScope, data.PermissionScope)
+			if err != nil {
+				fmt.Printf("Error executing batch update: %v\n", err)
+				tx.Rollback()
+				return
+			}
+		}
+
+		err = tx.Commit()
+		if err != nil {
+			fmt.Printf("Error committing transaction: %v\n", err)
+			tx.Rollback()
+			return
+		}
+
+		bar.Increment()
+	}
+	bar.Finish()
+	fmt.Println("All batches processed successfully.")
 }
