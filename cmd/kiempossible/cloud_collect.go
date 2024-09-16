@@ -32,7 +32,7 @@ func Collect() {
 				fmt.Println("Error in DB Connection", err)
 			}
 			defer DB.Close()
-			fmt.Printf("Log events ingested: %+v\n", len(logEvents))
+			fmt.Printf("Log events to process: %+v\n", len(logEvents))
 			log_parsing.HandleAWSLogs(logEvents, DB, client, clusterName, namespaces)
 		}
 

@@ -3,7 +3,7 @@
 VALIDATION
 - verify permissions needed within the cluster
 - Figure out id numbers in the DB (19000 reaches 44000 for some reason?)
-- AWS logs collection with go routines is good - for log handling need to check why works sometimes
+- AWS logs collection with go routines - check if race condition is fixed
 
 - fix log handling speed in local and azure, add go routine for azure ingestion
 
