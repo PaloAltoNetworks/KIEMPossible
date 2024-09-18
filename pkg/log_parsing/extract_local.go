@@ -58,6 +58,7 @@ func HandleLocalLogs(logEvents []auditv1.Event, db *sql.DB) {
 	fmt.Println("Processing Local Logs...")
 	bar := pb.StartNew(0)
 	userGroups := make(map[string][]string)
+	var updateDataList []UpdateData
 	for _, event := range logEvents {
 		if event.Stage == "ResponseComplete" && event.ResponseStatus != nil && event.ResponseStatus.Code == 200 {
 			entityName, entityType := getEntityNameAndType(event.User.Username)
@@ -72,12 +73,22 @@ func HandleLocalLogs(logEvents []auditv1.Event, db *sql.DB) {
 			permissionScope := getPermissionScope(event.ObjectRef.Namespace, event.ObjectRef.Name)
 			lastUsedTime := getLocalLastUsedTime(event.RequestReceivedTimestamp)
 			lastUsedResource := getLastUsedResource(event.ObjectRef.Namespace, event.ObjectRef.Resource, event.ObjectRef.Name)
-			updateDatabase(db, entityName, entityType, apiGroup, resourceType, verb, permissionScope, lastUsedTime, lastUsedResource)
+			updateDataList = append(updateDataList, UpdateData{
+				EntityName:       entityName,
+				EntityType:       entityType,
+				APIGroup:         apiGroup,
+				ResourceType:     resourceType,
+				Verb:             verb,
+				PermissionScope:  permissionScope,
+				LastUsedTime:     lastUsedTime,
+				LastUsedResource: lastUsedResource,
+			})
 		}
 		bar.Increment()
 	}
 	bar.Finish()
 	fmt.Println("Log File processed successfully!")
+	batchUpdateDatabase(db, updateDataList)
 }
 
 func getLocalLastUsedTime(eventTime metav1.MicroTime) string {

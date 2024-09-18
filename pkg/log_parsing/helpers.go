@@ -3,9 +3,10 @@ package log_parsing
 import (
 	"database/sql"
 	"fmt"
-	"os"
 	"strings"
 	"time"
+
+	"github.com/cheggaaa/pb"
 )
 
 func getEntityNameAndType(username string) (string, string) {
@@ -62,31 +63,103 @@ func getLastUsedResource(namespace, resource, name string) string {
 	}
 }
 
-func updateDatabase(db *sql.DB, entityName, entityType, apiGroup, resourceType, verb, permissionScope, lastUsedTime, lastUsedResource string) {
-	query := `
+// func updateDatabase(db *sql.DB, entityName, entityType, apiGroup, resourceType, verb, permissionScope, lastUsedTime, lastUsedResource string) {
+// 	query := `
+// 			UPDATE permission
+//     		SET last_used_time = ?, last_used_resource = ?
+//     		WHERE entity_name = ? AND entity_type = ? AND api_group = ? AND resource_type = ? AND verb = ?
+//         		AND (last_used_time < ? OR last_used_time IS NULL)
+//         		AND (
+//             		permission_scope = ? OR
+//             		(permission_scope like SUBSTRING_INDEX(?, '/', 1) AND ? LIKE '%/%')
+//         	)
+//     `
+
+// 	stmt, err := db.Prepare(query)
+// 	if err != nil {
+// 		fmt.Printf("Error preparing statement: %v\n", err)
+// 		fmt.Printf("Query: %s\n", query)
+// 		os.Exit(1)
+// 	}
+// 	defer stmt.Close()
+
+// 	_, err = stmt.Exec(lastUsedTime, lastUsedResource, entityName, entityType, apiGroup, resourceType, verb, lastUsedTime, permissionScope, permissionScope, permissionScope)
+// 	if err != nil {
+// 		fmt.Printf("Error updating database: %v\n", err)
+// 		os.Exit(1)
+// 	}
+// }
+
+type UpdateData struct {
+	EntityName       string
+	EntityType       string
+	APIGroup         string
+	ResourceType     string
+	Verb             string
+	PermissionScope  string
+	LastUsedTime     string
+	LastUsedResource string
+}
+
+func batchUpdateDatabase(db *sql.DB, updateDataList []UpdateData) {
+	fmt.Println("Attempting to update DB in batches...")
+	const batchSize = 10000
+	totalBatches := (len(updateDataList) + batchSize - 1) / batchSize
+	bar := pb.StartNew(totalBatches)
+
+	for i := 0; i < totalBatches; i++ {
+		start := i * batchSize
+		end := start + batchSize
+		if end > len(updateDataList) {
+			end = len(updateDataList)
+		}
+
+		batch := updateDataList[start:end]
+		tx, err := db.Begin()
+		if err != nil {
+			fmt.Printf("Error starting transaction: %v\n", err)
+			return
+		}
+
+		query := `
 			UPDATE permission
-    		SET last_used_time = ?, last_used_resource = ?
-    		WHERE entity_name = ? AND entity_type = ? AND api_group = ? AND resource_type = ? AND verb = ? 
-        		AND (last_used_time < ? OR last_used_time IS NULL)
-        		AND (
-            		permission_scope = ? OR
-            		(permission_scope like SUBSTRING_INDEX(?, '/', 1) AND ? LIKE '%/%')
-        	)
-    `
+			SET last_used_time = ?, last_used_resource = ?
+			WHERE entity_name = ? AND entity_type = ? AND api_group = ? AND resource_type = ? AND verb = ? 
+			AND (last_used_time < ? OR last_used_time IS NULL)
+			AND (
+				permission_scope = ? OR
+				(permission_scope like SUBSTRING_INDEX(?, '/', 1) AND ? LIKE '%/%')
+			)
+		`
 
-	stmt, err := db.Prepare(query)
-	if err != nil {
-		fmt.Printf("Error preparing statement: %v\n", err)
-		fmt.Printf("Query: %s\n", query)
-		os.Exit(1)
-	}
-	defer stmt.Close()
+		stmt, err := tx.Prepare(query)
+		if err != nil {
+			fmt.Printf("Error preparing statement: %v\n", err)
+			tx.Rollback()
+			return
+		}
+		defer stmt.Close()
 
-	_, err = stmt.Exec(lastUsedTime, lastUsedResource, entityName, entityType, apiGroup, resourceType, verb, lastUsedTime, permissionScope, permissionScope, permissionScope)
-	if err != nil {
-		fmt.Printf("Error updating database: %v\n", err)
-		os.Exit(1)
+		for _, data := range batch {
+			_, err = stmt.Exec(data.LastUsedTime, data.LastUsedResource, data.EntityName, data.EntityType, data.APIGroup, data.ResourceType, data.Verb, data.LastUsedTime, data.PermissionScope, data.PermissionScope, data.PermissionScope)
+			if err != nil {
+				fmt.Printf("Error executing batch update: %v\n", err)
+				tx.Rollback()
+				return
+			}
+		}
+
+		err = tx.Commit()
+		if err != nil {
+			fmt.Printf("Error committing transaction: %v\n", err)
+			tx.Rollback()
+			return
+		}
+
+		bar.Increment()
 	}
+	bar.Finish()
+	fmt.Println("All batches processed successfully.")
 }
 
 type PermissionRow struct {

@@ -83,6 +83,7 @@ So what actually happens when you run KIEMPossible?
 
 #### Notes
 There are still certain blind spots to which we must be vigilant:
+- Logging is based on a policy. In self-managed cluster we can control what is logged and thereby control the visibility. In managed clusters, the CSPs control what is logged (for the most part the policy isn't visible to us). As such, there may be gaps in the last_used_time or last_used_resource fields in the DB depending on logging gaps (i.e some last_used_time or last_used_resource may be empty even if the action corresponding to the permission was performed). 
 - A user who's permissions are gained through group inheritance and does not appear in the logs will not appear in the DB
 - Logging happens at the API Server level, therfore direct interaction with the Kubelet will not appear in the DB
 - Permissions the tool calculated through logs (Group inheritance and EKS Access Entries) may contain inaccuracies if the permissions were altered within the timeframe of the configured scan (7 days by default)

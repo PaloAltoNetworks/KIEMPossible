@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -19,44 +20,73 @@ func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName strin
 		return azquery.LogsClientQueryWorkspaceResponse{}, err
 	}
 
-	var logEvents azquery.LogsClientQueryWorkspaceResponse
 	endTime := time.Now()
 	startTime := endTime.Add(-7 * 24 * time.Hour)
-	totalDuration := endTime.Sub(startTime)
 
 	fmt.Printf("Ingesting Azure Logs from %+v to %+v...\n", startTime, endTime)
-	progressBar := pb.StartNew(int(totalDuration.Hours()))
+	bar := pb.StartNew(0)
+
+	var wg sync.WaitGroup
+	logEventsChan := make(chan azquery.LogsClientQueryWorkspaceResponse)
+	errorChan := make(chan error)
 
 	for start := startTime; start.Before(endTime); start = start.Add(1 * time.Hour) {
-		end := start.Add(1 * time.Hour)
-		if end.After(endTime) {
-			end = endTime
-		}
+		wg.Add(1)
+		go func(start time.Time) {
+			defer wg.Done()
+			end := start.Add(1 * time.Hour)
+			if end.After(endTime) {
+				end = endTime
+			}
 
-		query := fmt.Sprintf(`
-            AKSAudit
-			| where ResponseStatus.code == 200 and Stage == 'ResponseComplete'
-            | where TimeGenerated >= datetime(%v)
-            | where TimeGenerated < datetime(%v)
-            | project TimeGenerated, Verb, User, ObjectRef
-        `, start.Format(time.RFC3339), end.Format(time.RFC3339))
+			query := fmt.Sprintf(`
+                AKSAudit
+                | where ResponseStatus.code == 200 and Stage == 'ResponseComplete'
+                | where TimeGenerated >= datetime(%v)
+                | where TimeGenerated < datetime(%v)
+                | project TimeGenerated, Verb, User, ObjectRef
+            `, start.Format(time.RFC3339), end.Format(time.RFC3339))
 
-		resp, err := client.QueryWorkspace(context.Background(), workspaceID, azquery.Body{
-			Query: to.Ptr(query),
-		}, nil)
-		if err != nil {
+			resp, err := client.QueryWorkspace(context.Background(), workspaceID, azquery.Body{
+				Query: to.Ptr(query),
+			}, nil)
+			if err != nil {
+				errorChan <- err
+				return
+			}
+			if resp.Error != nil {
+				errorChan <- resp.Error
+				return
+			}
+
+			logEventsChan <- resp
+			for _, table := range resp.Tables {
+				bar.Add(len(table.Rows))
+			}
+		}(start)
+	}
+
+	go func() {
+		wg.Wait()
+		close(logEventsChan)
+		close(errorChan)
+	}()
+
+	var logEvents azquery.LogsClientQueryWorkspaceResponse
+
+	for {
+		select {
+		case resp, ok := <-logEventsChan:
+			if !ok {
+				bar.Finish()
+				return logEvents, nil
+			}
+			logEvents.Tables = append(logEvents.Tables, resp.Tables...)
+		case err := <-errorChan:
+			bar.Finish()
 			return azquery.LogsClientQueryWorkspaceResponse{}, err
 		}
-		if resp.Error != nil {
-			return azquery.LogsClientQueryWorkspaceResponse{}, resp.Error
-		}
-
-		logEvents.Tables = append(logEvents.Tables, resp.Tables...)
-		progressBar.Increment()
 	}
-	progressBar.Finish()
-
-	return logEvents, nil
 }
 
 type AzureUserInfo struct {
@@ -75,10 +105,18 @@ type objectRef struct {
 
 func HandleAzureLogs(logEvents azquery.LogsClientQueryWorkspaceResponse, db *sql.DB) {
 	fmt.Println("Processing Azure Logs...")
-	bar := pb.StartNew(0)
+	totalRows := 0
+	for _, table := range logEvents.Tables {
+		totalRows += len(table.Rows)
+	}
+	bar := pb.StartNew(totalRows)
+
 	userGroups := make(map[string][]string)
+	var updateDataList []UpdateData
+
 	for _, table := range logEvents.Tables {
 		for _, row := range table.Rows {
+			bar.Increment()
 			AzureUserInfoCell, ok := row[2].(string)
 			if !ok {
 				continue
@@ -113,10 +151,19 @@ func HandleAzureLogs(logEvents azquery.LogsClientQueryWorkspaceResponse, db *sql
 			lastUsedTime := getLastUsedTime(row[0].(string))
 			lastUsedResource := getLastUsedResource(objectRef.Namespace, resourceType, objectRef.Name)
 
-			updateDatabase(db, entityName, entityType, apiGroup, resourceType, verb, permissionScope, lastUsedTime, lastUsedResource)
-			bar.Increment()
+			updateDataList = append(updateDataList, UpdateData{
+				EntityName:       entityName,
+				EntityType:       entityType,
+				APIGroup:         apiGroup,
+				ResourceType:     resourceType,
+				Verb:             verb,
+				PermissionScope:  permissionScope,
+				LastUsedTime:     lastUsedTime,
+				LastUsedResource: lastUsedResource,
+			})
 		}
 	}
 	bar.Finish()
 	fmt.Println("Azure Logs processed successfully!")
+	batchUpdateDatabase(db, updateDataList)
 }
