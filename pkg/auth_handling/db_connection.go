@@ -32,3 +32,26 @@ func DBConnect() (*sql.DB, error) {
 
 	return DB, err
 }
+
+func ClearDatabase(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec("DELETE FROM rufus.permission")
+	if err != nil {
+		return fmt.Errorf("failed to clear table rufus.permission: %v", err)
+	}
+
+	_, err = tx.Exec("ALTER TABLE rufus.permission AUTO_INCREMENT = 1")
+	if err != nil {
+		return fmt.Errorf("failed to reset AUTO_INCREMENT: %v", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+	return nil
+}

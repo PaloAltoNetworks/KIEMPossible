@@ -44,6 +44,11 @@ func KubeCollect(clusterName, clusterType string, sess *session.Session, azure_c
 	}
 	defer DB.Close()
 
+	err = auth_handling.ClearDatabase(DB)
+	if err != nil {
+		fmt.Printf("Failed to clear database: %+v\n", err)
+	}
+
 	fmt.Printf("Calculating permissions and inserting into DB...\n")
 	err = kube_collection.CollectClusterRoleBindings(clientset, DB, clusterRoles)
 	if err != nil {

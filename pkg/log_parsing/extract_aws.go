@@ -30,7 +30,7 @@ func ExtractAWSLogs(sess *session.Session, clusterName string) ([]*cloudwatchlog
 
 	bar := pb.StartNew(0)
 
-	for start := startTime; start < endTime; start += 24 * 60 * 60 * 1000 {
+	for start := startTime; start < endTime; start += 12 * 60 * 60 * 1000 {
 		wg.Add(1)
 		go func(start int64) {
 			defer wg.Done()
@@ -39,7 +39,7 @@ func ExtractAWSLogs(sess *session.Session, clusterName string) ([]*cloudwatchlog
 			for {
 				filterLogEventsOutput, err := cwl.FilterLogEvents(&cloudwatchlogs.FilterLogEventsInput{
 					StartTime:           aws.Int64(start),
-					EndTime:             aws.Int64(min(start+24*60*60*1000, endTime)),
+					EndTime:             aws.Int64(min(start+12*60*60*1000, endTime)),
 					LogGroupName:        aws.String(logGroupName),
 					LogStreamNamePrefix: aws.String("kube-apiserver-audit-"),
 					NextToken:           nextToken,

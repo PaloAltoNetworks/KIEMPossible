@@ -7,9 +7,9 @@
 KIEMPossible is a tool designed to simplify Kubernetes Identity Entitlement Management by allowing visibility of permissions and their usage across the cluster, to allow for real enforcement of the principle of least privilege (don't trust Rufus, he's a mole)
 
 ## Setup and Run
-- `docker-compose up -d` - Spins up a mysql server on a Docker container, accessible at 127.0.0.1:3306 (mysql -u mysql -p -h 127.0.0.1, default password is 'mysql')
-- `make darwin` - Creates a MacOS (amd64) executable in the /bin folder (KIEMPossible_darwin_amd64)
-- `make linux` - Creates a Linux (amd64) executable in the /bin folder (KIEMPossible_linux_amd64)
+- `docker-compose up -d` - Spins up a mysql server on a Docker container, accessible at 127.0.0.1:3306 (mysql -u mysql -p -h 127.0.0.1, default password is 'mysql'). There is also an optional UI (uncomment in `docker-compose.yml`)
+- `make darwin` - Creates a MacOS (amd64) executable in the /bin folder (KIEMPossible_darwin)
+- `make linux` - Creates a Linux (amd64) executable in the /bin folder (KIEMPossible)
 - `KIEMPossible_darwin [command] [options]` - Run MacOS version, command is the provider
 - `KIEMPossible [command] [options]` - Run Linux version, command is the provider
 - `--help or [command] --help` - Help menu for the binary and the individual commands 
@@ -88,6 +88,3 @@ There are still certain blind spots to which we must be vigilant:
 - Logging happens at the API Server level, therfore direct interaction with the Kubelet will not appear in the DB
 - Permissions the tool calculated through logs (Group inheritance and EKS Access Entries) may contain inaccuracies if the permissions were altered within the timeframe of the configured scan (7 days by default)
 - EKS Access Entries for Service-Linked Roles are not currently supported
-- At present, KIEMPossible's rate is roughly 15 minutes per 1 Million logs in AWS and Azure. We are currently working to improve this
-
-AWS - rate is 1 minute for fetching 1 Million Logs, ~ 1 minute for 0.5 million processing
