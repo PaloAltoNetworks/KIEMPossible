@@ -63,33 +63,6 @@ func getLastUsedResource(namespace, resource, name string) string {
 	}
 }
 
-// func updateDatabase(db *sql.DB, entityName, entityType, apiGroup, resourceType, verb, permissionScope, lastUsedTime, lastUsedResource string) {
-// 	query := `
-// 			UPDATE permission
-//     		SET last_used_time = ?, last_used_resource = ?
-//     		WHERE entity_name = ? AND entity_type = ? AND api_group = ? AND resource_type = ? AND verb = ?
-//         		AND (last_used_time < ? OR last_used_time IS NULL)
-//         		AND (
-//             		permission_scope = ? OR
-//             		(permission_scope like SUBSTRING_INDEX(?, '/', 1) AND ? LIKE '%/%')
-//         	)
-//     `
-
-// 	stmt, err := db.Prepare(query)
-// 	if err != nil {
-// 		fmt.Printf("Error preparing statement: %v\n", err)
-// 		fmt.Printf("Query: %s\n", query)
-// 		os.Exit(1)
-// 	}
-// 	defer stmt.Close()
-
-// 	_, err = stmt.Exec(lastUsedTime, lastUsedResource, entityName, entityType, apiGroup, resourceType, verb, lastUsedTime, permissionScope, permissionScope, permissionScope)
-// 	if err != nil {
-// 		fmt.Printf("Error updating database: %v\n", err)
-// 		os.Exit(1)
-// 	}
-// }
-
 type UpdateData struct {
 	EntityName       string
 	EntityType       string

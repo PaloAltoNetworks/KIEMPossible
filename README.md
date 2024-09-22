@@ -31,7 +31,7 @@ KIEMPossible is a tool designed to simplify Kubernetes Identity Entitlement Mana
 - Audit logging configured for the cluster (`AKS->Cluster->Monitoring->Diagnostic Settings->Kubernetes Audit`) and permissions to retrieve the logs
 
 #### GCP
-- While the majority of the logic exists, GCP is not currently fully supported due to the rate limit enforced for the Logging API
+- While the majority of the logic exists, GCP is not currently fully supported due to the rate limit enforced for the Logging API and the log structure
 
 #### Local
 - Name of the target cluster
