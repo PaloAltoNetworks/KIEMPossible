@@ -6,6 +6,8 @@ import (
 	"os"
 )
 
+// Establish command line flows and help for aws, azure, gcp and local. Returns the credential information
+
 type CredentialsPath struct {
 	FilePath string
 	LogFile  string

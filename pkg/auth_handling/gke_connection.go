@@ -30,6 +30,7 @@ func connectToGKE(cred *google.Credentials, clusterName, region, projectID strin
 	} else {
 		fmt.Printf("No InCluster Config, Trying GKE Flow...\n")
 	}
+	// Revert to GKE flow using multiple APIs to get all the necessary info
 	containerClient, err := container.NewClusterManagerClient(context.Background(), option.WithCredentials(cred))
 	if err != nil {
 		return nil, err

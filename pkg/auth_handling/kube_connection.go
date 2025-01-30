@@ -13,6 +13,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+// Select authflow based on cluster type
 func KubeConnect(clusterName string, clusterType string, aws_sess *session.Session, azure_cred *azidentity.ClientSecretCredential, Sub, RG string, gcp_cred *google.Credentials, region, projectID string, cred_file CredentialsPath) (client *kubernetes.Clientset, err error) {
 	switch clusterType {
 	case "EKS":
@@ -45,7 +46,7 @@ func connectToLocal() (client *kubernetes.Clientset, err error) {
 	} else {
 		fmt.Printf("No InCluster Config, Trying with KubeConfig...\n")
 	}
-
+	// Revert to using kubeconfig
 	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Printf("error getting user home dir: %v\n", err)

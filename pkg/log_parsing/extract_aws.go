@@ -15,6 +15,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
+// Get logs from Azure for last 7 days using query
 func ExtractAWSLogs(sess *session.Session, clusterName string) ([]*cloudwatchlogs.FilteredLogEvent, error) {
 	cwl := cloudwatchlogs.New(sess)
 	logGroupName := fmt.Sprintf("/aws/eks/%s/cluster", clusterName)
@@ -104,6 +105,7 @@ type AuditLogEvent struct {
 	} `json:"annotations"`
 }
 
+// Normalize log data and update DB in batches
 func HandleAWSLogs(logEvents []*cloudwatchlogs.FilteredLogEvent, db *sql.DB, sess *session.Session, clusterName string, namespaces *v1.NamespaceList) {
 	fmt.Println("Processing AWS Logs...")
 	bar := pb.StartNew(len(logEvents))
@@ -116,6 +118,7 @@ func HandleAWSLogs(logEvents []*cloudwatchlogs.FilteredLogEvent, db *sql.DB, ses
 			fmt.Printf("Error parsing log event: %v\n", err)
 			continue
 		}
+		// If permissions given through access policy, use accessPolicy flow
 		if strings.HasPrefix(auditLogEvent.Annotations.Reason, "EKS Access Policy") {
 			handleEKSAccessPolicy(auditLogEvent.User.Username, auditLogEvent.Annotations.Reason, clusterName, sess, db, namespaces)
 		}

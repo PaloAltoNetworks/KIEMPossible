@@ -20,6 +20,7 @@ type ResourceType struct {
 	ResourceName string
 }
 
+// Collect role bindings, normalize their content, and insert to DB per subject in the binding
 func CollectRoleBindings(client *kubernetes.Clientset, db *sql.DB, clusterRoles map[string]*rbacv1.ClusterRole, roles map[string]*rbacv1.Role) error {
 	namespaces, err := client.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
@@ -40,6 +41,7 @@ func CollectRoleBindings(client *kubernetes.Clientset, db *sql.DB, clusterRoles 
 	}
 	defer stmt.Close()
 	subresources, err := GetSubresources(client)
+	// Iterate over roles by namespace, get subjects and role/clusterRole
 	for _, namespace := range namespaces.Items {
 		rbList, err := client.RbacV1().RoleBindings(namespace.Name).List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
@@ -64,7 +66,7 @@ func CollectRoleBindings(client *kubernetes.Clientset, db *sql.DB, clusterRoles 
 					fmt.Printf("Unsupported RoleRef kind: %s\n", rb.RoleRef.Kind)
 					continue
 				}
-
+				// Send to function to handle normalizing the data
 				if role != nil {
 					processRoleRules(stmt, entityName, subject.Kind, role.Rules, resourceTypes, namespace.Name, role.Name, rb.Name, subresources)
 				} else if clusterRole != nil {
@@ -77,7 +79,9 @@ func CollectRoleBindings(client *kubernetes.Clientset, db *sql.DB, clusterRoles 
 	return nil
 }
 
+// Normalize the data obtained from roles and insert to DB by subject
 func processRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rbacv1.PolicyRule, resourceTypes []ResourceType, namespace, roleName, roleBindingName string, subresources map[string]string) error {
+	// Iterate through every rule, flatten wildcard if they exist
 	for _, rule := range rules {
 		resourceNames := rule.ResourceNames
 		for _, apiGroup := range rule.APIGroups {
@@ -89,6 +93,7 @@ func processRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rba
 					}
 
 					for _, resourceType := range resourceTypes {
+						// Handle any resourceNames if they exist so the scope is correct in the DB
 						if len(resourceNames) > 0 {
 							for _, resourceName := range resourceNames {
 								scope := fmt.Sprintf("%s/%s", namespace, resourceName)
@@ -106,10 +111,12 @@ func processRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rba
 								}
 							}
 						} else {
+							// Else put the scope as namespace, unless the resource isn't namespaced (like node)
 							scope := namespace
 							if !resourceType.Namespaced {
 								scope = "cluster-wide"
 							}
+							// Handle subresources and insert
 							for subresource, srapiGroup := range subresources {
 								if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup && !strings.Contains(resourceType.ResourceType, "/") {
 									_, err = stmt.Exec(entityName, entityType, resourceType.APIGroup, subresource, verb, scope, roleName, "Role", roleBindingName, "RoleBinding", nil, nil)
@@ -118,6 +125,7 @@ func processRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rba
 									}
 								}
 							}
+							// DB insert
 							_, err := stmt.Exec(entityName, entityType, resourceType.APIGroup, resourceType.ResourceType, verb, scope, roleName, "Role", roleBindingName, "RoleBinding", nil, nil)
 							if err != nil {
 								return err
@@ -131,10 +139,11 @@ func processRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rba
 	return nil
 }
 
+// Normalize the data obtained from clusterRoles and insert to DB by subject
 func processClusterRoleRules(stmt *sql.Stmt, entityName, entityType string, rules []rbacv1.PolicyRule, resourceTypes []ResourceType, clusterRoleName, roleBindingName string, subresources map[string]string) error {
+	// Iterate through every rule, flatten wildcard if they exist
 	for _, rule := range rules {
 		resourceNames := rule.ResourceNames
-
 		for _, apiGroup := range rule.APIGroups {
 			for _, resource := range rule.Resources {
 				for _, verb := range rule.Verbs {
@@ -144,6 +153,7 @@ func processClusterRoleRules(stmt *sql.Stmt, entityName, entityType string, rule
 					}
 
 					for _, resourceType := range resourceTypes {
+						// Handle any resourceNames if they exist so the scope is correct in the DB
 						if len(resourceNames) > 0 {
 							for _, resourceName := range resourceNames {
 								scope := fmt.Sprintf("%s", resourceName)
@@ -161,7 +171,9 @@ func processClusterRoleRules(stmt *sql.Stmt, entityName, entityType string, rule
 								}
 							}
 						} else {
+							// Else put the scope as cluster-wide
 							scope := "cluster-wide"
+							// Handle subresources and insert
 							for subresource, srapiGroup := range subresources {
 								if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup && !strings.Contains(resourceType.ResourceType, "/") {
 									_, err = stmt.Exec(entityName, entityType, resourceType.APIGroup, subresource, verb, scope, clusterRoleName, "ClusterRole", roleBindingName, "RoleBinding", nil, nil)
@@ -170,6 +182,7 @@ func processClusterRoleRules(stmt *sql.Stmt, entityName, entityType string, rule
 									}
 								}
 							}
+							// DB Insert
 							_, err := stmt.Exec(entityName, entityType, resourceType.APIGroup, resourceType.ResourceType, verb, scope, clusterRoleName, "ClusterRole", roleBindingName, "RoleBinding", nil, nil)
 							if err != nil {
 								return err
@@ -183,6 +196,7 @@ func processClusterRoleRules(stmt *sql.Stmt, entityName, entityType string, rule
 	return nil
 }
 
+// Collect clusterRole bindings, normalize their content, and insert to DB per subject in the binding
 func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, clusterRoles map[string]*rbacv1.ClusterRole) error {
 	crbList, err := client.RbacV1().ClusterRoleBindings().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
@@ -211,6 +225,7 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 	if err != nil {
 		return err
 	}
+	// Iterate over clusterRoles, get subjects and clusterRole
 	for _, crb := range crbList.Items {
 		for _, subject := range crb.Subjects {
 			clusterRole, ok := clusterRoles[crb.RoleRef.Name]
@@ -223,7 +238,7 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 			if subject.Kind == "ServiceAccount" {
 				entityName = fmt.Sprintf("%s:%s", subject.Namespace, subject.Name)
 			}
-
+			// Iterate over rules in the clusterRole and flatten wildcards if necessary
 			for _, rule := range clusterRole.Rules {
 				resourceNames := rule.ResourceNames
 				for _, apiGroup := range rule.APIGroups {
@@ -234,7 +249,7 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 								return err
 							}
 							for _, resourceType := range resourceTypes {
-
+								// Handle any resourceNames
 								if len(resourceNames) > 0 {
 									for _, resourceName := range resourceNames {
 										scope := fmt.Sprintf("%s", resourceName)
@@ -251,6 +266,7 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 											return err
 										}
 									}
+									// If resource is namespaced, make sure 1 entry per namespace in the cluster rather than 1 generic "wildcard" scope entry
 								} else if resourceType.Namespaced {
 									for _, namespace := range namespaces.Items {
 										for subresource, srapiGroup := range subresources {
@@ -267,6 +283,7 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 										}
 
 									}
+									// Handle subresources if necessary
 								} else {
 									for subresource, srapiGroup := range subresources {
 										if strings.HasPrefix(subresource, resourceType.ResourceType) && srapiGroup == resourceType.APIGroup && !strings.Contains(resourceType.ResourceType, "/") {
@@ -276,7 +293,7 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 											}
 										}
 									}
-
+									// DB Insert
 									_, err = stmt.Exec(entityName, subject.Kind, resourceType.APIGroup, resourceType.ResourceType, resourceType.Verb, "cluster-wide", clusterRole.Name, "ClusterRole", crb.Name, "ClusterRoleBinding", nil, nil)
 									if err != nil {
 										return err

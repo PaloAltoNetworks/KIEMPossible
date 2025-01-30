@@ -8,6 +8,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// Get the resource types in the cluster, their API groups and whether or not they're namespaced
 func GetResourceTypesAndAPIGroups(client *kubernetes.Clientset) ([]ResourceType, error) {
 	resourceTypes := []ResourceType{}
 	apiResourceList, err := client.Discovery().ServerPreferredResources()
@@ -36,8 +37,10 @@ func GetResourceTypesAndAPIGroups(client *kubernetes.Clientset) ([]ResourceType,
 	return resourceTypes, nil
 }
 
+// Logic to flatten out wildcards into the smallest possible permission subset (instead of 1 line for *, have 1 line X [individual permissions granted by wildcard])
 func FlattenWildcards(resourceTypes []ResourceType, verb, resource, apiGroup string) ([]ResourceType, error) {
 	var flattenedResourceTypes []ResourceType
+	// Handle full wildcard in verb and resource - get all resources and the verbs that can be performed on them
 	if verb == "*" && resource == "*" {
 		for _, rt := range resourceTypes {
 			verbs, err := GetVerbsForResourceType(rt.ResourceType)
@@ -53,6 +56,7 @@ func FlattenWildcards(resourceTypes []ResourceType, verb, resource, apiGroup str
 				})
 			}
 		}
+		// Handle wildcard in verb - get all verbs for resources in the resource field
 	} else if verb == "*" {
 		for _, rt := range resourceTypes {
 			if rt.ResourceType == resource {
@@ -70,6 +74,7 @@ func FlattenWildcards(resourceTypes []ResourceType, verb, resource, apiGroup str
 				}
 			}
 		}
+		// Handle wildcard in resource - get all resources which the verb can be performed on
 	} else if resource == "*" {
 		for _, rt := range resourceTypes {
 			if ContainsVerb(rt.ResourceType, verb) {
@@ -81,6 +86,7 @@ func FlattenWildcards(resourceTypes []ResourceType, verb, resource, apiGroup str
 				})
 			}
 		}
+		// Handle the leftover cases including subresources
 	} else {
 		resourceParts := strings.Split(resource, "/")
 		parentResource := resourceParts[0]
@@ -106,6 +112,7 @@ func FlattenWildcards(resourceTypes []ResourceType, verb, resource, apiGroup str
 	return flattenedResourceTypes, nil
 }
 
+// Get verbs for each resource type - fallback to "generic" verbs for unmapped resources
 func GetVerbsForResourceType(resourceType string) ([]string, error) {
 	resourceVerbsMap := map[string][]string{
 		"certificatesigningrequests": {"approve", "create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"},
@@ -114,7 +121,7 @@ func GetVerbsForResourceType(resourceType string) ([]string, error) {
 		"serviceaccounts":            {"impersonate", "create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"},
 		"users":                      {"impersonate", "create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"},
 		"groups":                     {"impersonate", "create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"},
-		// Add more resource types and their verbs
+		// To add more resource types and their verbs
 	}
 
 	genericVerbs := []string{"create", "delete", "deletecollection", "get", "list", "patch", "update", "watch"}
@@ -165,6 +172,7 @@ func ContainsVerb(resourceType, verb string) bool {
 	return false
 }
 
+// Get all the subresources for a given resources
 func GetSubresources(client *kubernetes.Clientset) (map[string]string, error) {
 	_, apiResourceLists, err := client.Discovery().ServerGroupsAndResources()
 	if err != nil {

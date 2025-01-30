@@ -15,12 +15,19 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Handling kube collection and processing from different cloud providers
+// EKS, AKS, GKE, and local supported
+
 func KubeCollect(clusterName, clusterType string, sess *session.Session, azure_cred *azidentity.ClientSecretCredential, subscriptionID, resourceGroup string, gcp_cred *google.Credentials, region, projectID string, cred_file auth_handling.CredentialsPath) *v1.NamespaceList {
+
+	// Connect to the cluster
 	clientset, err := auth_handling.KubeConnect(clusterName, clusterType, sess, azure_cred, subscriptionID, resourceGroup, gcp_cred, region, projectID, cred_file)
 	if err != nil {
 		fmt.Printf("error getting Kubernetes clientset: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Collect and normalize role and rolebinding information and insert into DB
 	roles := make(map[string]*rbacv1.Role)
 	clusterRoles := make(map[string]*rbacv1.ClusterRole)
 	namespaces, err := clientset.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})

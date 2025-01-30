@@ -24,6 +24,7 @@ func connectToAKS(cred *azidentity.ClientSecretCredential, clusterName, subscrip
 	} else {
 		fmt.Printf("No InCluster Config, Trying AKS Flow...\n")
 	}
+	// Revert to AKS flow dynamically creating kubeconfig
 	clientFactory, err := armcontainerservice.NewClientFactory(subscription, cred, nil)
 	if err != nil {
 		return nil, err

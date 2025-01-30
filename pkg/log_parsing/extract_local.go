@@ -12,6 +12,7 @@ import (
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
 )
 
+// Read log entries from the local file
 func ExtractLocalLogs(logFile string) ([]auditv1.Event, error) {
 	fmt.Printf("Ingesting Local Logs...\n")
 	file, err := os.Open(logFile)
@@ -54,6 +55,7 @@ func parseLines(data []byte) [][]byte {
 	return lines
 }
 
+// Handle logs, normalize with helper functions and insert to DB
 func HandleLocalLogs(logEvents []auditv1.Event, db *sql.DB) {
 	fmt.Println("Processing Local Logs...")
 	bar := pb.StartNew(0)

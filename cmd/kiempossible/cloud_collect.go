@@ -7,7 +7,12 @@ import (
 	"github.com/Golansami125/kiempossible/pkg/log_parsing"
 )
 
+// Handling log collection and processing from different cloud providers
+// EKS, AKS, and local supported for now, GCP TBD
+
 func Collect() {
+	// Authenticate and get cluster information
+
 	credentialsPath, clusterInfo, cloudProvider := auth_handling.Authenticator()
 	clusterName := clusterInfo.ClusterName
 	workspaceID := clusterInfo.WorkspaceID
@@ -17,6 +22,7 @@ func Collect() {
 	region := clusterInfo.Region
 	logFile := credentialsPath.LogFile
 
+	// Platform specific handling - cluster resource collection, logs extraction and processing and DB updates
 	if cloudProvider == "aws" {
 		client, err := auth_handling.AwsAuth(credentialsPath)
 		if err != nil {

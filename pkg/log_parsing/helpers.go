@@ -9,6 +9,7 @@ import (
 	"github.com/cheggaaa/pb"
 )
 
+// Functions to normalize data from the logs
 func getEntityNameAndType(username string) (string, string) {
 	if strings.HasPrefix(username, "system:serviceaccount:") {
 		return strings.TrimPrefix(username, "system:serviceaccount:"), "ServiceAccount"
@@ -74,6 +75,7 @@ type UpdateData struct {
 	LastUsedResource string
 }
 
+// Update DB in batches
 func batchUpdateDatabase(db *sql.DB, updateDataList []UpdateData) {
 	fmt.Println("Attempting to update DB in batches...")
 	const batchSize = 10000
@@ -150,6 +152,7 @@ type PermissionRow struct {
 	last_used_resource      sql.NullString
 }
 
+// Handle situations where user not in DB, but group from claim is (taken from log) - add group permissions to user (inheritance)
 func handleGroupInheritance(db *sql.DB, username string, groups []string) {
 	var rowData []PermissionRow
 	for _, group := range groups {
@@ -208,6 +211,7 @@ func handleGroupInheritance(db *sql.DB, username string, groups []string) {
 	}
 }
 
+// Update DB with inherited permissions
 func insertInheritedPermissionRow(db *sql.DB, row PermissionRow) error {
 	query := `
         INSERT IGNORE INTO permission (

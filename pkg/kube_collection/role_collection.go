@@ -9,6 +9,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// Collect roles by namespace
 func CollectRoles(client *kubernetes.Clientset, roles *map[string]*rbacv1.Role) error {
 	namespaces, err := client.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
@@ -28,6 +29,7 @@ func CollectRoles(client *kubernetes.Clientset, roles *map[string]*rbacv1.Role) 
 	return nil
 }
 
+// Collect clusterRoles
 func CollectClusterRoles(client *kubernetes.Clientset, clusterRoles *map[string]*rbacv1.ClusterRole) error {
 	clusterRoleList, err := client.RbacV1().ClusterRoles().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {

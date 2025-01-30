@@ -14,6 +14,7 @@ import (
 	"github.com/cheggaaa/pb"
 )
 
+// Get logs from Azure for last 7 days using query
 func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName string, workspaceID string) (azquery.LogsClientQueryWorkspaceResponse, error) {
 	client, err := azquery.NewLogsClient(cred, nil)
 	if err != nil {
@@ -103,6 +104,7 @@ type objectRef struct {
 	Subresource string `json:"subresource"`
 }
 
+// Normalize log data and update DB in batches
 func HandleAzureLogs(logEvents azquery.LogsClientQueryWorkspaceResponse, db *sql.DB) {
 	fmt.Println("Processing Azure Logs...")
 	totalRows := 0

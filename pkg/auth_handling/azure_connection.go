@@ -8,6 +8,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 )
 
+// Connect to Azure using creds file which contains all necessary info
 func AzureAuth(credentialsPath CredentialsPath) (*azidentity.ClientSecretCredential, error) {
 	filePath := credentialsPath.FilePath
 

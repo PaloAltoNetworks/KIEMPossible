@@ -13,7 +13,9 @@ import (
 
 var processedEntities []string
 
+// accessPolicy flow to handle EKS Access Policy
 func handleEKSAccessPolicy(entityName, reason, clusterName string, sess *session.Session, db *sql.DB, namespaces *v1.NamespaceList) {
+	// Keep track of processed entities to avoid duplicates
 	for _, name := range processedEntities {
 		if name == entityName {
 			return
@@ -61,6 +63,7 @@ func handleEKSAccessPolicy(entityName, reason, clusterName string, sess *session
 	processedEntities = append(processedEntities, entityName)
 }
 
+// List the access policies associated with the entry
 func listAssociatedAccessPolicies(clusterName, principalArn string, sess *session.Session) ([]string, []string) {
 	eksSvc := eks.New(sess)
 	input := &eks.ListAssociatedAccessPoliciesInput{
@@ -87,11 +90,13 @@ func listAssociatedAccessPolicies(clusterName, principalArn string, sess *sessio
 	return policyNames, accessScopes
 }
 
+// Get the policy name from the accessEntry
 func extractPolicyName(policyArn string) string {
 	parts := strings.Split(policyArn, "/")
 	return parts[len(parts)-1]
 }
 
+// Get the scope from the accessEntry
 func getAccessScope(accessScope *eks.AccessScope) string {
 	if *accessScope.Type == "cluster" {
 		return "cluster"
@@ -105,6 +110,7 @@ func getAccessScope(accessScope *eks.AccessScope) string {
 	return strings.Join(namespaces, ",")
 }
 
+// Handle permissions from the static adminView policy by getting every permission in the cluster
 func handleEKSClusterAdminPolicy(entityName, accessEntryArn, accessScope string, namespaces *v1.NamespaceList, db *sql.DB) {
 	query := `
         SELECT api_group, resource_type, permission_scope, verb
@@ -162,6 +168,7 @@ func handleEKSClusterAdminPolicy(entityName, accessEntryArn, accessScope string,
 	}
 }
 
+// Handle permissions from the static adminView policy by getting every 'view' permission in the cluster
 func handleEKSAdminViewPolicy(entityName, accessEntryArn, accessScope string, namespaces *v1.NamespaceList, db *sql.DB) {
 	query := `
         SELECT api_group, resource_type, permission_scope, verb
@@ -219,6 +226,7 @@ func handleEKSAdminViewPolicy(entityName, accessEntryArn, accessScope string, na
 	}
 }
 
+// Handle permissions from the static policies
 func handleStaticPolicy(entityName, accessEntryArn, accessScope string, eksEditPolicyPermissions []string, namespaces *v1.NamespaceList, db *sql.DB) {
 	for _, permission := range eksEditPolicyPermissions {
 		parts := strings.Split(permission, ":")

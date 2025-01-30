@@ -25,6 +25,7 @@ func connectToEKS(sess *session.Session, clusterName string) (client *kubernetes
 	} else {
 		fmt.Printf("No InCluster Config, Trying EKS Flow...\n")
 	}
+	// Revert to EKS flow dynamically creating kubeconfig
 	eksSvc := eks.New(sess)
 	input := &eks.DescribeClusterInput{
 		Name: aws.String(clusterName),

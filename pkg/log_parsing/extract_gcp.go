@@ -12,6 +12,8 @@ import (
 	"google.golang.org/api/option"
 )
 
+// Create logging client and query - irrelevant because of logging api rate limit. Need to verify, but probably do with pub/sub.
+// TBD
 func ExtractGCPLogs(creds *google.Credentials, clusterName, projectID, region string) ([]*logging.Entry, error) {
 	client, err := logadmin.NewClient(context.Background(), projectID, option.WithCredentials(creds))
 	if err != nil {

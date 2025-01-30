@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 )
 
+// Connect to AWS using creds file which contains all necessary info
 func AwsAuth(credentialsPath CredentialsPath) (*session.Session, error) {
 	filePath := credentialsPath.FilePath
 

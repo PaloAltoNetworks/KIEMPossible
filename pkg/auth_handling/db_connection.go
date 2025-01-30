@@ -9,6 +9,7 @@ import (
 
 var DB *sql.DB
 
+// Establish DB connection, default creds below
 func DBConnect() (*sql.DB, error) {
 	dbUser := "mysql"
 	dbPass := "mysql"

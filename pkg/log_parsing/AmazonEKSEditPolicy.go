@@ -1,5 +1,6 @@
 package log_parsing
 
+// Permissions in the EKSEditPolicy (access entries)
 var eksEditPolicyPermissions = []string{
 	"apps/v1:daemonsets:create,delete,deletecollection,patch,update,get,list,watch",
 	"apps/v1:deployments:create,delete,deletecollection,patch,update,get,list,watch",

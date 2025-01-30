@@ -1,5 +1,6 @@
 package log_parsing
 
+// Permissions in the EKSViewPolicy (access entries)
 var eksViewPolicyPermissions = []string{
 	"apps/v1:controllerrevisions:get,list,watch",
 	"apps/v1:daemonsets:get,list,watch",

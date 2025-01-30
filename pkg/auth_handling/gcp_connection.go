@@ -8,6 +8,7 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
+// Connect to GCP using creds file which contains all necessary info
 func GCPAuth(credentialsPath CredentialsPath) (*google.Credentials, CredentialsPath, error) {
 	filePath := credentialsPath.FilePath
 
