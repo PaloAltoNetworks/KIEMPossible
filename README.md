@@ -7,17 +7,17 @@
 KIEMPossible is a tool designed to simplify Kubernetes Identity Entitlement Management by allowing visibility of permissions and their usage across the cluster, to allow for real enforcement of the principle of least privilege (don't trust Rufus, he's a mole)
 
 ## Setup and Run
-- `docker-compose up -d` - Spins up a mysql server on a Docker container, accessible at 127.0.0.1:3306 (mysql -u mysql -p -h 127.0.0.1, default password is 'mysql'). There is also an optional UI (uncomment in `docker-compose.yml`)
+- `docker-compose up -d` - Spins up a mysql server on a Docker container, accessible at 127.0.0.1:3306 (`mysql -u mysql -p -h 127.0.0.1`, default password is 'mysql'). There is also an optional UI (uncomment in `docker-compose.yml`)
 - `make darwin` - Creates a MacOS (amd64) executable in the /bin folder (KIEMPossible_darwin)
 - `make linux` - Creates a Linux (amd64) executable in the /bin folder (KIEMPossible)
-- `KIEMPossible_darwin [command] [options]` - Run MacOS version, command is the provider
-- `KIEMPossible [command] [options]` - Run Linux version, command is the provider
+- `KIEMPossible_darwin [command] [options]` - Run MacOS version, command is the provider name
+- `KIEMPossible [command] [options]` - Run Linux version, command is the provider name
 - `--help or [command] --help` - Help menu for the binary and the individual commands 
 
 ## Requirements
 #### AWS
 - Name of the target cluster
-- A credentials file (`AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, AWS_REGION`)
+- Environment variables containing credentials (`AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN`. The region will be set to `us-east-1` by default unless `AWS_REGION` variable is set)
 - Permissions to get EKS credentials (within the cluster the needed permissions are get on Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces)
 - Audit logging configured for the cluster (`EKS->Cluster->Observability->Manage Logging->Audit`) and permissions to retrieve the logs 
 

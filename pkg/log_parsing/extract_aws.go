@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +26,8 @@ func ExtractAWSLogs(sess *session.Session, clusterName string) ([]*cloudwatchlog
 	endTime := now.UnixMilli()
 	fmt.Printf("Ingesting AWS Logs from %+v to now...\n", start)
 
+	// Concurrency control
+	semaphore := make(chan struct{}, 10) // Limit to 10 concurrent requests
 	var wg sync.WaitGroup
 	logEventsChan := make(chan []*cloudwatchlogs.FilteredLogEvent)
 	errorChan := make(chan error)
@@ -33,18 +36,23 @@ func ExtractAWSLogs(sess *session.Session, clusterName string) ([]*cloudwatchlog
 
 	for start := startTime; start < endTime; start += 12 * 60 * 60 * 1000 {
 		wg.Add(1)
+		semaphore <- struct{}{} // Block if more than 10 goroutines
 		go func(start int64) {
 			defer wg.Done()
+			defer func() { <-semaphore }() // Release the semaphore
+
 			var nextToken *string
 			localLogEvents := []*cloudwatchlogs.FilteredLogEvent{}
 			for {
-				filterLogEventsOutput, err := cwl.FilterLogEvents(&cloudwatchlogs.FilterLogEventsInput{
-					StartTime:           aws.Int64(start),
-					EndTime:             aws.Int64(min(start+12*60*60*1000, endTime)),
-					LogGroupName:        aws.String(logGroupName),
-					LogStreamNamePrefix: aws.String("kube-apiserver-audit-"),
-					NextToken:           nextToken,
-					FilterPattern:       aws.String(`{ $.stage = "ResponseComplete" && $.responseStatus.code = 200 }`),
+				filterLogEventsOutput, err := retryWithBackoff(func() (*cloudwatchlogs.FilterLogEventsOutput, error) {
+					return cwl.FilterLogEvents(&cloudwatchlogs.FilterLogEventsInput{
+						StartTime:           aws.Int64(start),
+						EndTime:             aws.Int64(min(start+12*60*60*1000, endTime)),
+						LogGroupName:        aws.String(logGroupName),
+						LogStreamNamePrefix: aws.String("kube-apiserver-audit-"),
+						NextToken:           nextToken,
+						FilterPattern:       aws.String(`{ $.stage = "ResponseComplete" && $.responseStatus.code = 200 }`),
+					})
 				})
 				if err != nil {
 					errorChan <- err
@@ -82,6 +90,36 @@ func ExtractAWSLogs(sess *session.Session, clusterName string) ([]*cloudwatchlog
 			return nil, fmt.Errorf("error occurred during log extraction: %v", err)
 		}
 	}
+}
+
+// Retries API calls with exponential backoff
+func retryWithBackoff(f func() (*cloudwatchlogs.FilterLogEventsOutput, error)) (*cloudwatchlogs.FilterLogEventsOutput, error) {
+	var attempt int
+	for attempt = 0; attempt < 5; attempt++ {
+		result, err := f()
+		if err == nil {
+			return result, nil
+		}
+		if !isThrottlingError(err) {
+			return nil, err
+		}
+		// Exponential backoff with jitter
+		sleepTime := time.Duration((1<<attempt)*100+rand.Intn(100)) * time.Millisecond
+		fmt.Printf("Throttling detected, retrying in %v...\n", sleepTime)
+		time.Sleep(sleepTime)
+	}
+	return nil, fmt.Errorf("max retries exceeded")
+}
+
+func isThrottlingError(err error) bool {
+	return strings.Contains(err.Error(), "ThrottlingException")
+}
+
+func min(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 type AuditLogEvent struct {

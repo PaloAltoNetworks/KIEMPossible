@@ -1,3 +1,4 @@
+# Spin up a mysql instance to store the data
 version: '3'
 
 services:
@@ -17,6 +18,7 @@ services:
     command: --init-file /docker-entrypoint-initdb.d/create_tables.sql
 
   # Spin up a UI at 127.0.0.1:8080:
+
   # adminer:
   #   image: adminer
   #   container_name: adminer
