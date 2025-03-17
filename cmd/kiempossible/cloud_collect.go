@@ -29,7 +29,8 @@ func Collect() {
 			fmt.Printf("Failed to establish AWS client: %+v\n", err)
 		}
 		namespaces := KubeCollect(clusterName, "EKS", client, nil, "", "", nil, "", "", credentialsPath)
-		logEvents, err := log_parsing.ExtractAWSLogs(client, clusterName)
+		log_parsing.InitSession(client)
+		logEvents, err := log_parsing.ExtractAWSLogs(log_parsing.GetSession(), clusterName)
 		if err != nil {
 			fmt.Printf("Failed to extract AWS logs: %+v\n", err)
 		} else {
@@ -38,7 +39,6 @@ func Collect() {
 				fmt.Println("Error in DB Connection", err)
 			}
 			defer DB.Close()
-			fmt.Printf("Log events to process: %+v\n", len(logEvents))
 			log_parsing.HandleAWSLogs(logEvents, DB, client, clusterName, namespaces)
 		}
 

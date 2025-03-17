@@ -1,6 +1,7 @@
 package auth_handling
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -30,5 +31,23 @@ func AwsAuth(credentialsPath CredentialsPath) (*session.Session, error) {
 		return nil, err
 	}
 
+	return sess, nil
+}
+
+func AwsReauth(accessKey string, secretKey string, sessionToken string, region string) (*session.Session, error) {
+	sess, err := session.NewSession(&aws.Config{
+		Region: aws.String(region),
+		Credentials: credentials.NewStaticCredentials(
+			accessKey,
+			secretKey,
+			sessionToken,
+		),
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new session: %v", err)
+	}
+
+	fmt.Println("Successfully reauthenticated!")
 	return sess, nil
 }

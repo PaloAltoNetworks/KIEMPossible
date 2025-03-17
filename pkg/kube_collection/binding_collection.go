@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Golansami125/kiempossible/pkg/log_parsing"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -22,10 +23,8 @@ type ResourceType struct {
 
 // Collect role bindings, normalize their content, and insert to DB per subject in the binding
 func CollectRoleBindings(client *kubernetes.Clientset, db *sql.DB, clusterRoles map[string]*rbacv1.ClusterRole, roles map[string]*rbacv1.Role) error {
-	namespaces, err := client.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
+	namespaces, _ := client.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
+
 	resourceTypes, err := GetResourceTypesAndAPIGroups(client)
 	if err != nil {
 		return err
@@ -41,6 +40,12 @@ func CollectRoleBindings(client *kubernetes.Clientset, db *sql.DB, clusterRoles 
 	}
 	defer stmt.Close()
 	subresources, err := GetSubresources(client)
+	if err != nil {
+		return err
+	}
+
+	log_parsing.GlobalProgressBar.Start("roles and roleBindings processed")
+
 	// Iterate over roles by namespace, get subjects and role/clusterRole
 	for _, namespace := range namespaces.Items {
 		rbList, err := client.RbacV1().RoleBindings(namespace.Name).List(context.TODO(), metav1.ListOptions{})
@@ -73,8 +78,11 @@ func CollectRoleBindings(client *kubernetes.Clientset, db *sql.DB, clusterRoles 
 					processClusterRoleRules(stmt, entityName, subject.Kind, clusterRole.Rules, resourceTypes, clusterRole.Name, rb.Name, subresources)
 				}
 			}
+			log_parsing.GlobalProgressBar.Add(1)
 		}
 	}
+	log_parsing.GlobalProgressBar.Stop()
+	println()
 	fmt.Printf("Inserted RoleBinding Permissions!\n")
 	return nil
 }
@@ -212,6 +220,7 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 	if err != nil {
 		return err
 	}
+
 	stmt, err := db.Prepare(`
         INSERT INTO permission (entity_name, entity_type, api_group, resource_type, verb, permission_scope, permission_source, permission_source_type, permission_binding, permission_binding_type, last_used_time, last_used_resource)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -221,10 +230,10 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 		return err
 	}
 	defer stmt.Close()
-	subresources, err := GetSubresources(client)
-	if err != nil {
-		return err
-	}
+	subresources, _ := GetSubresources(client)
+
+	log_parsing.GlobalProgressBar.Start("clusterRoles and clusterRoleBindings processed")
+
 	// Iterate over clusterRoles, get subjects and clusterRole
 	for _, crb := range crbList.Items {
 		for _, subject := range crb.Subjects {
@@ -305,7 +314,10 @@ func CollectClusterRoleBindings(client *kubernetes.Clientset, db *sql.DB, cluste
 				}
 			}
 		}
+		log_parsing.GlobalProgressBar.Add(1)
 	}
+	log_parsing.GlobalProgressBar.Stop()
+	println()
 	fmt.Printf("Inserted ClusterRoleBinding Permissions!\n")
 	return nil
 }

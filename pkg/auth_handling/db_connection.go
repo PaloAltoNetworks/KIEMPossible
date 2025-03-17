@@ -29,7 +29,7 @@ func DBConnect() (*sql.DB, error) {
 		return nil, err
 	}
 
-	fmt.Println("Connected to MySQL database successfully!")
+	//fmt.Println("Connected to MySQL database successfully!")
 
 	return DB, err
 }

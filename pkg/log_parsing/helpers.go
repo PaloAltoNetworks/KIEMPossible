@@ -4,9 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
-
-	"github.com/cheggaaa/pb"
 )
 
 // Functions to normalize data from the logs
@@ -77,10 +76,10 @@ type UpdateData struct {
 
 // Update DB in batches
 func batchUpdateDatabase(db *sql.DB, updateDataList []UpdateData) {
-	fmt.Println("Attempting to update DB in batches...")
+	//fmt.Println("Attempting to update DB in batches...")
 	const batchSize = 10000
 	totalBatches := (len(updateDataList) + batchSize - 1) / batchSize
-	bar := pb.StartNew(totalBatches)
+	//bar := pb.StartNew(totalBatches)
 
 	for i := 0; i < totalBatches; i++ {
 		start := i * batchSize
@@ -131,10 +130,10 @@ func batchUpdateDatabase(db *sql.DB, updateDataList []UpdateData) {
 			return
 		}
 
-		bar.Increment()
+		//bar.Increment()
 	}
-	bar.Finish()
-	fmt.Println("All batches processed successfully.")
+	//bar.Finish()
+	//fmt.Println("All batches processed successfully.")
 }
 
 type PermissionRow struct {
@@ -229,4 +228,114 @@ func insertInheritedPermissionRow(db *sql.DB, row PermissionRow) error {
 	)
 
 	return err
+}
+
+// Global progress bar
+type ProgressBar struct {
+	mu        sync.Mutex
+	running   bool
+	paused    bool
+	count     int64
+	start     time.Time
+	message   string
+	restart   time.Time
+	totalTime time.Duration
+}
+
+var GlobalProgressBar ProgressBar
+
+func (p *ProgressBar) Start(message string, startCount ...int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.running {
+		p.running = true
+		p.paused = false
+		p.start = time.Now()
+		p.restart = p.start
+		p.message = message
+		p.totalTime = 0
+		if len(startCount) > 0 {
+			p.count = startCount[0]
+		} else {
+			p.count = 0
+		}
+
+		go p.run()
+	}
+}
+
+func (p *ProgressBar) Stop() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.running {
+		p.running = false
+		println()
+		p.printFinished()
+	}
+}
+
+func (p *ProgressBar) Pause() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.running && !p.paused {
+		p.paused = true
+	}
+}
+
+func (p *ProgressBar) Resume() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.running && p.paused {
+		p.paused = false
+	}
+}
+
+func (p *ProgressBar) Add(n int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.count += int64(n)
+}
+
+func (p *ProgressBar) run() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		p.mu.Lock()
+		if !p.running {
+			p.mu.Unlock()
+			return
+		}
+		if !p.paused {
+			p.printProgress()
+		}
+		p.mu.Unlock()
+	}
+}
+
+func (p *ProgressBar) printProgress() {
+	elapsed := time.Since(p.start)
+	restartElapsed := time.Since(p.restart)
+	hours := int(elapsed.Hours())
+	minutes := int(elapsed.Minutes()) % 60
+	seconds := int(elapsed.Seconds()) % 60
+
+	restartHours := int(restartElapsed.Hours())
+	restartMinutes := int(restartElapsed.Minutes()) % 60
+	restartSeconds := int(restartElapsed.Seconds()) % 60
+
+	fmt.Printf("Progress: %d %s(Total Time: %02d:%02d:%02d, Since last pause: %02d:%02d:%02d)\r", p.count, p.message, hours, minutes, seconds, restartHours, restartMinutes, restartSeconds)
+}
+
+func (p *ProgressBar) printFinished() {
+	elapsed := time.Since(p.start)
+	restartElapsed := time.Since(p.restart)
+	hours := int(elapsed.Hours())
+	minutes := int(elapsed.Minutes()) % 60
+	seconds := int(elapsed.Seconds()) % 60
+
+	restartHours := int(restartElapsed.Hours())
+	restartMinutes := int(restartElapsed.Minutes()) % 60
+	restartSeconds := int(restartElapsed.Seconds()) % 60
+
+	fmt.Printf("Total stats: %d %s(Total Time: %02d:%02d:%02d, Since last pause: %02d:%02d:%02d)\n", p.count, p.message, hours, minutes, seconds, restartHours, restartMinutes, restartSeconds)
 }
