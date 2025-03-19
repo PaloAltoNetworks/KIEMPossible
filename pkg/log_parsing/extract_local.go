@@ -1,67 +1,91 @@
 package log_parsing
 
 import (
+	"bufio"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
+	"runtime"
+	"runtime/debug"
 
-	"github.com/cheggaaa/pb"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
 )
 
 // Read log entries from the local file
-func ExtractLocalLogs(logFile string) ([]auditv1.Event, error) {
+func ExtractLocalLogs(logFile string) (string, error) {
 	fmt.Printf("Ingesting Local Logs...\n")
 	file, err := os.Open(logFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open log file: %v", err)
+		return "", fmt.Errorf("failed to open log file: %v", err)
 	}
 	defer file.Close()
 
-	data, err := io.ReadAll(file)
+	tempFile, err := os.CreateTemp("", "local_logs_*.json")
 	if err != nil {
-		return nil, fmt.Errorf("failed to read log file: %v", err)
+		return "", fmt.Errorf("failed to create temp file: %v", err)
 	}
+	defer tempFile.Close()
+	writer := bufio.NewWriter(tempFile)
 
-	var events []auditv1.Event
-	for _, line := range parseLines(data) {
+	GlobalProgressBar.Start("cluster logs ingested from file")
+	defer GlobalProgressBar.Stop()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Bytes()
 		event := auditv1.Event{}
 		if err := json.Unmarshal(line, &event); err != nil {
 			continue
 		}
-		events = append(events, event)
-	}
-
-	return events, nil
-}
-
-func parseLines(data []byte) [][]byte {
-	var lines [][]byte
-	var line []byte
-	for _, b := range data {
-		if b == '\n' {
-			lines = append(lines, line)
-			line = nil
+		data, err := json.Marshal(event)
+		if err != nil {
 			continue
 		}
-		line = append(line, b)
+		_, err = writer.Write(append(data, '\n'))
+		if err != nil {
+			continue
+		}
+		GlobalProgressBar.Add(1)
 	}
-	if len(line) > 0 {
-		lines = append(lines, line)
+
+	if err := scanner.Err(); err != nil {
+		GlobalProgressBar.Stop()
+		println()
+		return "", fmt.Errorf("error scanning file: %v", err)
 	}
-	return lines
+
+	GlobalProgressBar.Stop()
+	println()
+	writer.Flush()
+	return tempFile.Name(), nil
 }
 
 // Handle logs, normalize with helper functions and insert to DB
-func HandleLocalLogs(logEvents []auditv1.Event, db *sql.DB) {
+func HandleLocalLogs(tempFilePath string, db *sql.DB) {
 	fmt.Println("Processing Local Logs...")
-	bar := pb.StartNew(0)
+
+	file, err := os.Open(tempFilePath)
+	if err != nil {
+		fmt.Printf("Error opening temp file: %v\n", err)
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
 	userGroups := make(map[string][]string)
 	var updateDataList []UpdateData
-	for _, event := range logEvents {
+	GlobalProgressBar.Start("cluster events processed")
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		event := auditv1.Event{}
+		if err := json.Unmarshal(line, &event); err != nil {
+			fmt.Printf("Error unmarshaling event: %v\n", err)
+			continue
+		}
+
 		if event.Stage == "ResponseComplete" && event.ResponseStatus != nil && event.ResponseStatus.Code == 200 {
 			entityName, entityType := getEntityNameAndType(event.User.Username)
 			entityGroups := event.User.Groups
@@ -86,11 +110,23 @@ func HandleLocalLogs(logEvents []auditv1.Event, db *sql.DB) {
 				LastUsedResource: lastUsedResource,
 			})
 		}
-		bar.Increment()
+		GlobalProgressBar.Add(1)
+		// Periodic memory cleanup
+		if len(updateDataList) > 5000 {
+			batchUpdateDatabase(db, updateDataList)
+			updateDataList = nil
+			runtime.GC()
+			debug.FreeOSMemory()
+		}
 	}
-	bar.Finish()
-	fmt.Println("Log File processed successfully!")
+
+	GlobalProgressBar.Stop()
+	println()
 	batchUpdateDatabase(db, updateDataList)
+
+	// Cleanup temp file
+	fmt.Println("Logs processed, cleaning up temp log file...")
+	os.Remove(tempFilePath)
 }
 
 func getLocalLastUsedTime(eventTime metav1.MicroTime) string {

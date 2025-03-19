@@ -49,6 +49,9 @@ func connectToGKE(cred *google.Credentials, clusterName, region, projectID strin
 	}
 
 	token, err := getToken(cred_file)
+	if err != nil {
+		return nil, err
+	}
 
 	clientset, err := kubernetes.NewForConfig(&rest.Config{
 		Host:        cluster.Endpoint,
@@ -57,6 +60,9 @@ func connectToGKE(cred *google.Credentials, clusterName, region, projectID strin
 			CAData: ca,
 		},
 	})
+	if err != nil {
+		return nil, err
+	}
 	fmt.Printf("Connected to %+v successfully!\n", clusterName)
 	return clientset, nil
 }

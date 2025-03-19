@@ -20,16 +20,11 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-var fileMutex sync.Mutex
-var sessionMutex sync.Mutex
-var sessionCond = sync.NewCond(&sessionMutex)
-var sessionRef *session.Session
-
 // Get logs from AWS for last 7 days using query
 func ExtractAWSLogs(sess *session.Session, clusterName string) (string, error) {
 	logGroupName := fmt.Sprintf("/aws/eks/%s/cluster", clusterName)
 	now := time.Now()
-	start := now.AddDate(0, 0, -3)
+	start := now.AddDate(0, 0, -7)
 	startTime := start.UnixMilli()
 	endTime := now.UnixMilli()
 	fmt.Printf("Ingesting AWS Logs from %+v to now...\n", start)
@@ -107,24 +102,6 @@ func ExtractAWSLogs(sess *session.Session, clusterName string) (string, error) {
 			return tempFile.Name(), nil
 		}
 	}
-}
-
-// Writes logs to temp file
-func writeLogsToTempFile(writer *bufio.Writer, logEvents []*cloudwatchlogs.FilteredLogEvent) error {
-	fileMutex.Lock() // Ensure only one goroutine writes at a time
-	defer fileMutex.Unlock()
-
-	for _, event := range logEvents {
-		data, err := json.Marshal(event)
-		if err != nil {
-			return fmt.Errorf("failed to serialize log event: %v", err)
-		}
-		_, err = writer.Write(append(data, '\n'))
-		if err != nil {
-			return fmt.Errorf("failed to write log event to temp file: %v", err)
-		}
-	}
-	return writer.Flush()
 }
 
 func InitSession(sess *session.Session) {
@@ -356,20 +333,4 @@ func HandleAWSLogs(tempFilePath string, db *sql.DB, sess *session.Session, clust
 	// Cleanup temp file
 	fmt.Println("Logs processed, cleaning up temp log file...")
 	os.Remove(tempFilePath)
-}
-
-// Helper function to count lines in a file
-func countLines(filePath string) int {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return 0
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	lineCount := 0
-	for scanner.Scan() {
-		lineCount++
-	}
-	return lineCount
 }

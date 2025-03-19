@@ -1,12 +1,24 @@
 package log_parsing
 
 import (
+	"bufio"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/monitor/azquery"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 )
+
+var fileMutex sync.Mutex
+var sessionMutex sync.Mutex
+var sessionCond = sync.NewCond(&sessionMutex)
+var sessionRef *session.Session
 
 // Functions to normalize data from the logs
 func getEntityNameAndType(username string) (string, string) {
@@ -76,10 +88,8 @@ type UpdateData struct {
 
 // Update DB in batches
 func batchUpdateDatabase(db *sql.DB, updateDataList []UpdateData) {
-	//fmt.Println("Attempting to update DB in batches...")
 	const batchSize = 10000
 	totalBatches := (len(updateDataList) + batchSize - 1) / batchSize
-	//bar := pb.StartNew(totalBatches)
 
 	for i := 0; i < totalBatches; i++ {
 		start := i * batchSize
@@ -129,11 +139,7 @@ func batchUpdateDatabase(db *sql.DB, updateDataList []UpdateData) {
 			tx.Rollback()
 			return
 		}
-
-		//bar.Increment()
 	}
-	//bar.Finish()
-	//fmt.Println("All batches processed successfully.")
 }
 
 type PermissionRow struct {
@@ -228,6 +234,60 @@ func insertInheritedPermissionRow(db *sql.DB, row PermissionRow) error {
 	)
 
 	return err
+}
+
+// Helper function to count lines in a file
+func countLines(filePath string) int {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return 0
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
+	for scanner.Scan() {
+		lineCount++
+	}
+	return lineCount
+}
+
+// Writes logs to temp file
+func writeLogsToTempFile(writer *bufio.Writer, logEvents interface{}) error {
+	fileMutex.Lock() // Ensure only one goroutine writes at a time
+	defer fileMutex.Unlock()
+
+	switch events := logEvents.(type) {
+	case []*cloudwatchlogs.FilteredLogEvent:
+		for _, event := range events {
+			data, err := json.Marshal(event)
+			if err != nil {
+				return fmt.Errorf("failed to serialize log event: %v", err)
+			}
+			_, err = writer.Write(append(data, '\n'))
+			if err != nil {
+				return fmt.Errorf("failed to write log event to temp file: %v", err)
+			}
+		}
+	case azquery.LogsClientQueryWorkspaceResponse:
+		for _, table := range events.Tables {
+			GlobalProgressBar.Add(len(table.Rows))
+			for _, row := range table.Rows {
+				data, err := json.Marshal(row)
+				if err != nil {
+					return fmt.Errorf("failed to serialize log event: %v", err)
+				}
+				_, err = writer.Write(append(data, '\n'))
+				if err != nil {
+					return fmt.Errorf("failed to write log event to temp file: %v", err)
+				}
+			}
+		}
+	default:
+		return fmt.Errorf("unsupported log event type")
+	}
+
+	return writer.Flush()
 }
 
 // Global progress bar

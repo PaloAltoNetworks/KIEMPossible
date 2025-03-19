@@ -1,38 +1,51 @@
 package log_parsing
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
+	"runtime"
+	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/monitor/azquery"
-	"github.com/cheggaaa/pb"
 )
 
 // Get logs from Azure for last 7 days using query
-func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName string, workspaceID string) (azquery.LogsClientQueryWorkspaceResponse, error) {
+func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName string, workspaceID string) (string, error) {
 	client, err := azquery.NewLogsClient(cred, nil)
 	if err != nil {
-		return azquery.LogsClientQueryWorkspaceResponse{}, err
+		return "", err
 	}
 
 	endTime := time.Now()
-	startTime := endTime.Add(-7 * 24 * time.Hour)
+	startTime := endTime.Add(-1 * 24 * time.Hour)
 
 	fmt.Printf("Ingesting Azure Logs from %+v to %+v...\n", startTime, endTime)
-	bar := pb.StartNew(0)
 
+	tempFile, err := os.CreateTemp("", "azure_logs_*.json")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %v", err)
+	}
+	defer tempFile.Close()
+	writer := bufio.NewWriter(tempFile)
+
+	semaphore := make(chan struct{}, 10)
 	var wg sync.WaitGroup
-	logEventsChan := make(chan azquery.LogsClientQueryWorkspaceResponse)
 	errorChan := make(chan error)
+	GlobalProgressBar.Start("cluster logs ingested from Azure")
+	defer GlobalProgressBar.Stop()
 
 	for start := startTime; start.Before(endTime); start = start.Add(1 * time.Hour) {
 		wg.Add(1)
+		semaphore <- struct{}{}
 		go func(start time.Time) {
 			defer wg.Done()
 			end := start.Add(1 * time.Hour)
@@ -53,39 +66,41 @@ func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName strin
 			}, nil)
 			if err != nil {
 				errorChan <- err
+				<-semaphore
 				return
 			}
 			if resp.Error != nil {
 				errorChan <- resp.Error
+				<-semaphore
 				return
 			}
 
-			logEventsChan <- resp
-			for _, table := range resp.Tables {
-				bar.Add(len(table.Rows))
+			err = writeLogsToTempFile(writer, resp)
+			if err != nil {
+				errorChan <- err
+				<-semaphore
+				return
 			}
+			<-semaphore
 		}(start)
 	}
 
 	go func() {
 		wg.Wait()
-		close(logEventsChan)
 		close(errorChan)
 	}()
 
-	var logEvents azquery.LogsClientQueryWorkspaceResponse
-
 	for {
 		select {
-		case resp, ok := <-logEventsChan:
-			if !ok {
-				bar.Finish()
-				return logEvents, nil
-			}
-			logEvents.Tables = append(logEvents.Tables, resp.Tables...)
 		case err := <-errorChan:
-			bar.Finish()
-			return azquery.LogsClientQueryWorkspaceResponse{}, err
+			GlobalProgressBar.Stop()
+			println()
+			return "", fmt.Errorf("error occurred during log extraction: %v", err)
+		default:
+			GlobalProgressBar.Stop()
+			println()
+			writer.Flush()
+			return tempFile.Name(), nil
 		}
 	}
 }
@@ -105,26 +120,44 @@ type objectRef struct {
 }
 
 // Normalize log data and update DB in batches
-func HandleAzureLogs(logEvents azquery.LogsClientQueryWorkspaceResponse, db *sql.DB) {
-	fmt.Println("Processing Azure Logs...")
-	totalRows := 0
-	for _, table := range logEvents.Tables {
-		totalRows += len(table.Rows)
-	}
-	bar := pb.StartNew(totalRows)
+func HandleAzureLogs(tempFilePath string, db *sql.DB) {
+	fmt.Println("Processing Azure Logs and attempting to update database...")
 
+	// Get total number of lines in the file
+	totalLines := countLines(tempFilePath)
+	if totalLines == 0 {
+		fmt.Println("No logs to process.")
+		return
+	}
+
+	file, err := os.Open(tempFilePath)
+	if err != nil {
+		fmt.Printf("Error opening temp file: %v\n", err)
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
 	userGroups := make(map[string][]string)
 	var updateDataList []UpdateData
+	GlobalProgressBar.Start("cluster events processed", int64(totalLines))
 
-	for _, table := range logEvents.Tables {
-		for _, row := range table.Rows {
-			bar.Increment()
+	for scanner.Scan() {
+		line := scanner.Text()
+		var row []interface{}
+		err := json.Unmarshal([]byte(line), &row)
+		if err != nil {
+			fmt.Printf("Error unmarshaling row: %v\n", err)
+			continue
+		}
+
+		if len(row) > 3 {
 			AzureUserInfoCell, ok := row[2].(string)
 			if !ok {
 				continue
 			}
 			var AzureUserInfo AzureUserInfo
-			err := json.Unmarshal([]byte(AzureUserInfoCell), &AzureUserInfo)
+			err = json.Unmarshal([]byte(AzureUserInfoCell), &AzureUserInfo)
 			if err != nil {
 				fmt.Printf("Error unmarshaling user info: %v\n", err)
 				continue
@@ -148,9 +181,18 @@ func HandleAzureLogs(logEvents azquery.LogsClientQueryWorkspaceResponse, db *sql
 			}
 			apiGroup := getAPIGroup(objectRef.ApiGroup, objectRef.ApiVersion)
 			resourceType := getResourceType(objectRef.Resource, objectRef.Subresource)
-			verb := row[1].(string)
+			verb, ok := row[1].(string)
+			if !ok {
+				continue
+			}
 			permissionScope := getPermissionScope(objectRef.Namespace, objectRef.Name)
-			lastUsedTime := getLastUsedTime(row[0].(string))
+			lastUsedTime, ok := row[0].(string)
+			if !ok {
+				continue
+			}
+
+			parts := strings.Split(strings.Replace(lastUsedTime, "T", " ", 1), ".")
+			formattedLastUsedTime := parts[0]
 			lastUsedResource := getLastUsedResource(objectRef.Namespace, resourceType, objectRef.Name)
 
 			updateDataList = append(updateDataList, UpdateData{
@@ -160,12 +202,25 @@ func HandleAzureLogs(logEvents azquery.LogsClientQueryWorkspaceResponse, db *sql
 				ResourceType:     resourceType,
 				Verb:             verb,
 				PermissionScope:  permissionScope,
-				LastUsedTime:     lastUsedTime,
+				LastUsedTime:     formattedLastUsedTime,
 				LastUsedResource: lastUsedResource,
 			})
+
+			GlobalProgressBar.Add(1)
+			// Periodic memory cleanup
+			if len(updateDataList) > 5000 {
+				batchUpdateDatabase(db, updateDataList)
+				updateDataList = nil
+				runtime.GC()
+				debug.FreeOSMemory()
+			}
 		}
 	}
-	bar.Finish()
-	fmt.Println("Azure Logs processed successfully!")
+	GlobalProgressBar.Stop()
+	println()
 	batchUpdateDatabase(db, updateDataList)
+
+	// Cleanup temp file
+	fmt.Println("Logs processed, cleaning up temp log file...")
+	os.Remove(tempFilePath)
 }

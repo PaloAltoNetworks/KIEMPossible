@@ -23,9 +23,10 @@ KIEMPossible is a tool designed to simplify Kubernetes Identity Entitlement Mana
 
 #### AZURE
 - Name of the target cluster
-- A credentials file (`AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET`)
+- Valid Service Principal credentials (`client-id, client-secret`)
 - Name of the Resource Group in which the cluster is deployed
 - Subscription ID of the Subscription in which the cluster is deployed
+- Tenant ID of the tenant to which the subscription belongs
 - Workspace ID of the Log Analytics Workspace which acts as the audit logs destination
 - Permissions to get AKS credentials - at present Local Kubernetes Accounts must be enabled to retrieve the credentials (within the cluster the needed permissions are get on Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces)
 - Audit logging configured for the cluster (`AKS->Cluster->Monitoring->Diagnostic Settings->Kubernetes Audit`) and permissions to retrieve the logs
