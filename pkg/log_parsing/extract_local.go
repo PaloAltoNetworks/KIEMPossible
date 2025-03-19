@@ -29,7 +29,7 @@ func ExtractLocalLogs(logFile string) (string, error) {
 	defer tempFile.Close()
 	writer := bufio.NewWriter(tempFile)
 
-	GlobalProgressBar.Start("cluster logs ingested from file")
+	GlobalProgressBar.Start("cluster log chunks ingested from file")
 	defer GlobalProgressBar.Stop()
 
 	scanner := bufio.NewScanner(file)

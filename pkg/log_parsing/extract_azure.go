@@ -40,7 +40,7 @@ func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName strin
 	semaphore := make(chan struct{}, 10)
 	var wg sync.WaitGroup
 	errorChan := make(chan error)
-	GlobalProgressBar.Start("cluster logs ingested from Azure")
+	GlobalProgressBar.Start("cluster log chunks ingested from Azure")
 	defer GlobalProgressBar.Stop()
 
 	for start := startTime; start.Before(endTime); start = start.Add(1 * time.Hour) {
