@@ -38,13 +38,13 @@ func ExtractAWSLogs(sess *session.Session, clusterName string) (string, error) {
 	writer := bufio.NewWriter(tempFile)
 
 	// Concurrency control
-	semaphore := make(chan struct{}, 10)
+	semaphore := make(chan struct{}, 12)
 	var wg sync.WaitGroup
 	errorChan := make(chan error)
 	GlobalProgressBar.Start("cluster logs ingested from AWS")
 	defer GlobalProgressBar.Stop()
 
-	for start := startTime; start < endTime; start += 6 * 60 * 60 * 1000 {
+	for start := startTime; start < endTime; start += 12 * 60 * 60 * 1000 {
 		wg.Add(1)
 		semaphore <- struct{}{}
 		go func(start int64) {

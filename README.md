@@ -89,3 +89,4 @@ There are still certain blind spots to which we must be vigilant:
 - Logging happens at the API Server level, therfore direct interaction with the Kubelet will not appear in the DB
 - Permissions the tool calculated through logs (Group inheritance and EKS Access Entries) may contain inaccuracies if the permissions were altered within the timeframe of the configured scan (7 days by default)
 - EKS Access Entries for Service-Linked Roles are not currently supported
+- The speed of log ingestion is limited to rate limiting set by the public cloud providers - while the values set worked best for the setup tested, you can modify these by changing the concurrency limits and log "chunk" sizes in the code (`pkg/log_parsing/extract_aws` and `pkg/log_parsing/extract_azure`).
