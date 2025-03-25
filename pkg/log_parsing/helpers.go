@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -234,22 +233,6 @@ func insertInheritedPermissionRow(db *sql.DB, row PermissionRow) error {
 	)
 
 	return err
-}
-
-// Helper function to count lines in a file
-func countLines(filePath string) int {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return 0
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	lineCount := 0
-	for scanner.Scan() {
-		lineCount++
-	}
-	return lineCount
 }
 
 // Writes logs to temp file

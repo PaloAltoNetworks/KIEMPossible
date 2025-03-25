@@ -13,12 +13,15 @@ KIEMPossible is a tool designed to simplify Kubernetes Identity Entitlement Mana
 - `KIEMPossible_darwin [command] [options]` - Run MacOS version, command is the provider name
 - `KIEMPossible [command] [options]` - Run Linux version, command is the provider name
 - `--help or [command] --help` - Help menu for the binary and the individual commands 
+- The concurrency limits for AWS and Azure are dynamic (based on CPU), and static for GCP (due to rate limit) - these can be overrided by setting the `KIEMPOSSIBLE_LOG_CONCURRENCY` environment variable.
+- Log ingestion is set by default to look back 7 days - this can be overridden by setting the `KIEMPOSSIBLE_LOG_DAYS` environment variable.
+- GCP page size for API requesets to Logging API is set at 1,000,000 by default - this can be overridden by setting the `KIEMPOSSIBLE_GCP_PAGE_SIZE` environment variable.
 
 ## Requirements
 #### AWS
 - Name of the target cluster
 - Environment variables containing credentials (`AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN`. The region will be set to `us-east-1` by default unless `AWS_REGION` variable is set)
-- Permissions to get EKS credentials (within the cluster the needed permissions are get on Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces)
+- Permissions to get EKS credentials (within the cluster permissions to get Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces are required)
 - Audit logging configured for the cluster (`EKS->Cluster->Observability->Manage Logging->Audit`) and permissions to retrieve the logs 
 
 #### AZURE
@@ -28,11 +31,16 @@ KIEMPossible is a tool designed to simplify Kubernetes Identity Entitlement Mana
 - Subscription ID of the Subscription in which the cluster is deployed
 - Tenant ID of the tenant to which the subscription belongs
 - Workspace ID of the Log Analytics Workspace which acts as the audit logs destination
-- Permissions to get AKS credentials - at present Local Kubernetes Accounts must be enabled to retrieve the credentials (within the cluster the needed permissions are get on Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces)
+- Permissions to get AKS credentials - at present Local Kubernetes Accounts must be enabled to retrieve the credentials (within the cluster permissions to get Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces are required)
 - Audit logging configured for the cluster (`AKS->Cluster->Monitoring->Diagnostic Settings->Kubernetes Audit`) and permissions to retrieve the logs
 
 #### GCP
-- While the majority of the logic exists, GCP is not currently fully supported due to the rate limit enforced for the Logging API and the log structure
+- Name of the target cluster
+- Valid GCP Service Account credential file (in JSON format)
+- Project ID of the project in which the cluster is deployed
+- Region in which the cluster is deployed
+- Permissions to get GKE credentials (within the cluster permissions to get Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces are required)
+- Audit logging configured for the cluster (Enabled by default, `GKE->Clusters->Cluster->Features->Logging`) and permissions to retrieve the logs
 
 #### Local
 - Name of the target cluster
@@ -80,7 +88,7 @@ So what actually happens when you run KIEMPossible?
 - Retrieval of all the Roles (refers to Roles and ClusterRoles) and Bindings (refers to RoleBindings and ClusterRoleBindings) in the cluster
 - Extraction of all of the Subjects and their matching Roles from the Bindings
 - "Flattening" the permissions for each subject to the lowest possible level (a single verb and scope - for namespaced resources this is either `namespace` or `namespace/resourceName`, for non-namespaced resources this is either `cluster-wide` or `resourceName`). For example, `*` on `pods` at the cluster level, becomes a line per verb applicable to the pods resource, per namespace in the cluster. This also takes into account special verbs which are only applicable to certain resources such as `impersonate` or `bind`. Additionally, top-level resources such as `serviceaccounts` are broken down to their subresources (so in this case the DB would end up with the relevant permissions for `serviceaccount` and for `serviceaccounts/token`). All of this "flattening" is crucial for the comparison of the permission table and the logs, allowing us to handle more specific cases
-- Log ingestion based on the chosen provider. During the log ingestion, group inheritance is handled - this means that users or serviceaccounts which don't get their permissions directly from Bindings but rather through group membership will be mapped to the DB. During this stage, we handle group inheritance for Local, AWS and AZURE clusters. Additionally, we handle EKS Access Entries in order to ensure coverage of entities with permissions gained through this method
+- Log ingestion based on the chosen provider. During the log ingestion, group inheritance is handled (check notes for GKE) - this means that users or serviceaccounts which don't get their permissions directly from Bindings but rather through group membership will be mapped to the DB. During this stage, we handle group inheritance for Local, AWS and AZURE clusters. Additionally, we handle EKS Access Entries in order to ensure coverage of entities with permissions gained through this method
 
 #### Notes
 There are still certain blind spots to which we must be vigilant:
@@ -89,4 +97,6 @@ There are still certain blind spots to which we must be vigilant:
 - Logging happens at the API Server level, therfore direct interaction with the Kubelet will not appear in the DB
 - Permissions the tool calculated through logs (Group inheritance and EKS Access Entries) may contain inaccuracies if the permissions were altered within the timeframe of the configured scan (7 days by default)
 - EKS Access Entries for Service-Linked Roles are not currently supported
-- The speed of log ingestion is limited to rate limiting set by the public cloud providers - while the values set worked best for the setup tested, you can modify these by changing the concurrency limits and log "chunk" sizes in the code (`pkg/log_parsing/extract_aws` and `pkg/log_parsing/extract_azure`).
+- The speed of log ingestion is limited to rate limiting set by the public cloud providers - while the values set worked best for the setup tested, you can modify these by changing the log "chunk" sizes in the code (`pkg/log_parsing/extract_aws.go`, `pkg/log_parsing/extract_azure.go`, and `pkg/log_parsing/extract_gcp.go`). 
+- In GCP, the Logging API has a relatively low rate limit. To tackle this, we set a high `pageSize` for each request sent - this is still not as fast as ingestion for the other cloud providers but works moderately well.
+- Lastly, in GKE logs, the `groups` claim is not displayed. As such, we have no (current) way of handling group inheritance for GKE, meaning the only permissions displayed are those we derive from the bindings within the cluster.

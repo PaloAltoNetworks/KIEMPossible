@@ -1,20 +1,35 @@
 package kube_collection
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 )
 
 // Get the resource types in the cluster, their API groups and whether or not they're namespaced
 func GetResourceTypesAndAPIGroups(client *kubernetes.Clientset) ([]ResourceType, error) {
 	resourceTypes := []ResourceType{}
-	apiResourceList, err := client.Discovery().ServerPreferredResources()
+
+	// Force a discovery cache refresh
+	_, err := client.Discovery().RESTClient().Get().AbsPath("/apis").DoRaw(context.TODO())
 	if err != nil {
-		return nil, err
+		fmt.Println("Warning: Failed to refresh discovery cache, but continuing...")
 	}
+
+	apiResourceList, err := client.Discovery().ServerPreferredResources()
+	// Add error handling for API Discovery
+	if err != nil {
+		if discovery.IsGroupDiscoveryFailedError(err) {
+			fmt.Println("Warning: Some API groups failed to load, but continuing...")
+		} else {
+			return nil, err
+		}
+	}
+
 	for _, apiResourceGroup := range apiResourceList {
 		groupVersion, err := schema.ParseGroupVersion(apiResourceGroup.GroupVersion)
 		if err != nil {

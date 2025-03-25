@@ -8,7 +8,7 @@ import (
 )
 
 // Handling log collection and processing from different cloud providers
-// EKS, AKS, and local supported for now, GCP TBD
+// EKS, AKS, GKE, and local supported for now
 
 func Collect() {
 	// Authenticate and get cluster information
@@ -30,7 +30,7 @@ func Collect() {
 		}
 		namespaces := KubeCollect(clusterName, "EKS", client, nil, "", "", nil, "", "", credentialsPath)
 		log_parsing.InitSession(client)
-		logEvents, err := log_parsing.ExtractAWSLogs(log_parsing.GetSession(), clusterName)
+		logEventsFile, err := log_parsing.ExtractAWSLogs(log_parsing.GetSession(), clusterName)
 		if err != nil {
 			fmt.Printf("Failed to extract AWS logs: %+v\n", err)
 		} else {
@@ -39,7 +39,7 @@ func Collect() {
 				fmt.Println("Error in DB Connection", err)
 			}
 			defer DB.Close()
-			log_parsing.HandleAWSLogs(logEvents, DB, client, clusterName, namespaces)
+			log_parsing.HandleAWSLogs(logEventsFile, DB, client, clusterName, namespaces)
 		}
 
 	} else if cloudProvider == "azure" {
@@ -48,7 +48,7 @@ func Collect() {
 			fmt.Printf("Failed to establish Azure client: %+v\n", err)
 		}
 		KubeCollect(clusterName, "AKS", nil, cred, subscriptionID, resourceGroup, nil, "", "", credentialsPath)
-		logEvents, err := log_parsing.ExtractAzureLogs(cred, clusterName, workspaceID)
+		logEventsFile, err := log_parsing.ExtractAzureLogs(cred, clusterName, workspaceID)
 		if err != nil {
 			fmt.Printf("Failed to extract Azure logs: %+v\n", err)
 		} else {
@@ -57,7 +57,7 @@ func Collect() {
 				fmt.Println("Error in DB Connection", err)
 			}
 			defer DB.Close()
-			log_parsing.HandleAzureLogs(logEvents, DB)
+			log_parsing.HandleAzureLogs(logEventsFile, DB)
 		}
 
 	} else if cloudProvider == "gcp" {
@@ -67,16 +67,21 @@ func Collect() {
 			fmt.Printf("Failed to establish GCP client: %+v\n", err)
 		}
 		KubeCollect(clusterName, "GKE", nil, nil, "", "", cred, region, projectID, cred_path)
-		logEvents, err := log_parsing.ExtractGCPLogs(cred, clusterName, projectID, region)
+		logEventsFile, err := log_parsing.ExtractGCPLogs(cred, clusterName, projectID, region)
 		if err != nil {
 			fmt.Printf("Failed to extract GCP logs: %+v\n", err)
 		} else {
-			fmt.Printf("Log Events:%+v\n", logEvents)
+			DB, err := auth_handling.DBConnect()
+			if err != nil {
+				fmt.Println("Error in DB Connection", err)
+			}
+			defer DB.Close()
+			log_parsing.HandleGCPLogs(logEventsFile, DB)
 		}
 
 	} else if cloudProvider == "local" {
 		KubeCollect("", "LOCAL", nil, nil, "", "", nil, "", "", credentialsPath)
-		logEvents, err := log_parsing.ExtractLocalLogs(logFile)
+		logEventsFile, err := log_parsing.ExtractLocalLogs(logFile)
 		if err != nil {
 			fmt.Printf("Failed to extract Local logs: %+v\n", err)
 		} else {
@@ -85,7 +90,7 @@ func Collect() {
 				fmt.Println("Error in DB Connection", err)
 			}
 			defer DB.Close()
-			log_parsing.HandleLocalLogs(logEvents, DB)
+			log_parsing.HandleLocalLogs(logEventsFile, DB)
 		}
 	}
 }

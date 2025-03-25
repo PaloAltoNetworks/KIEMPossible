@@ -13,6 +13,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// Struct to hold Kubernetes resource information
 type ResourceType struct {
 	APIGroup     string
 	ResourceType string
@@ -22,6 +23,7 @@ type ResourceType struct {
 	ResourceName string
 }
 
+// Struct to hold all the context needed to process a permission
 type PermissionContext struct {
 	EntityName   string
 	EntityType   string
@@ -34,6 +36,7 @@ type PermissionContext struct {
 	BindingType  string
 }
 
+// Prepare SQL statement for inserting permissions
 func preparePermissionStatement(db *sql.DB) (*sql.Stmt, error) {
 	return db.Prepare(`
         INSERT INTO permission (
@@ -48,6 +51,7 @@ func preparePermissionStatement(db *sql.DB) (*sql.Stmt, error) {
     `)
 }
 
+// Get all available resource types and subresources from the cluster
 func prepareResources(client *kubernetes.Clientset) ([]ResourceType, map[string]string, error) {
 	resourceTypes, err := GetResourceTypesAndAPIGroups(client)
 	if err != nil {
@@ -62,6 +66,7 @@ func prepareResources(client *kubernetes.Clientset) ([]ResourceType, map[string]
 	return resourceTypes, subresources, nil
 }
 
+// Handle the processing of subresources for a given resource type
 func processSubresource(
 	stmt *sql.Stmt,
 	ctx PermissionContext,
@@ -120,6 +125,7 @@ func processResourceType(
 	return processWithoutResourceNames(stmt, ctx, verb, namespace, subresources)
 }
 
+// Handles with resource names
 func processWithResourceNames(
 	stmt *sql.Stmt,
 	ctx PermissionContext,
@@ -145,6 +151,7 @@ func processWithResourceNames(
 	return nil
 }
 
+// Handle without resource names
 func processWithoutResourceNames(
 	stmt *sql.Stmt,
 	ctx PermissionContext,

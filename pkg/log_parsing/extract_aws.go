@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,11 +21,20 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-// Get logs from AWS for last 7 days using query
+// Get logs from AWS for last 7 days
 func ExtractAWSLogs(sess *session.Session, clusterName string) (string, error) {
 	logGroupName := fmt.Sprintf("/aws/eks/%s/cluster", clusterName)
 	now := time.Now()
-	start := now.AddDate(0, 0, -7)
+
+	// Default to 7 days, allow override via environment variable
+	days := 7
+	if envDays := os.Getenv("KIEMPOSSIBLE_LOG_DAYS"); envDays != "" {
+		if parsed, err := strconv.Atoi(envDays); err == nil && parsed > 0 {
+			days = parsed
+		}
+	}
+
+	start := now.AddDate(0, 0, -days)
 	startTime := start.UnixMilli()
 	endTime := now.UnixMilli()
 	fmt.Printf("Ingesting AWS Logs from %+v to now...\n", start)
@@ -38,7 +48,24 @@ func ExtractAWSLogs(sess *session.Session, clusterName string) (string, error) {
 	writer := bufio.NewWriter(tempFile)
 
 	// Concurrency control
-	semaphore := make(chan struct{}, 12)
+	// Calculate optimal concurrency based on CPU cores (4<=x<=16)
+	numCPU := runtime.NumCPU()
+	maxConcurrency := numCPU * 2
+	if maxConcurrency < 4 {
+		maxConcurrency = 4
+	}
+	if maxConcurrency > 16 {
+		maxConcurrency = 16
+	}
+
+	// Allow override
+	if envMax := os.Getenv("KIEMPOSSIBLE_LOG_CONCURRENCY"); envMax != "" {
+		if parsed, err := strconv.Atoi(envMax); err == nil && parsed > 0 {
+			maxConcurrency = parsed
+		}
+	}
+
+	semaphore := make(chan struct{}, maxConcurrency) // Dynamic concurrency limit
 	var wg sync.WaitGroup
 	errorChan := make(chan error)
 	GlobalProgressBar.Start("cluster log chunks ingested from AWS")
@@ -60,7 +87,7 @@ func ExtractAWSLogs(sess *session.Session, clusterName string) (string, error) {
 					NextToken:           nextToken,
 					FilterPattern:       aws.String(`{ $.stage = "ResponseComplete" && $.responseStatus.code = 200 }`),
 				}
-
+				// Retry with exponential backoff for rate limit
 				filterLogEventsOutput, err := retryWithBackoff(input)
 				if err != nil {
 					errorChan <- err
@@ -250,13 +277,6 @@ type AuditLogEvent struct {
 func HandleAWSLogs(tempFilePath string, db *sql.DB, sess *session.Session, clusterName string, namespaces *v1.NamespaceList) {
 	fmt.Println("Processing AWS Logs and attempting to update database...")
 
-	// Get total number of lines in the file
-	totalLines := countLines(tempFilePath)
-	if totalLines == 0 {
-		fmt.Println("No logs to process.")
-		return
-	}
-
 	tempFile, err := os.Open(tempFilePath)
 	if err != nil {
 		fmt.Printf("Error opening temp file: %v\n", err)
@@ -267,7 +287,7 @@ func HandleAWSLogs(tempFilePath string, db *sql.DB, sess *session.Session, clust
 	scanner := bufio.NewScanner(tempFile)
 	userGroups := make(map[string][]string)
 	var updateDataList []UpdateData
-	GlobalProgressBar.Start("cluster events processed", int64(totalLines))
+	GlobalProgressBar.Start("cluster events processed")
 
 	for scanner.Scan() {
 		var event cloudwatchlogs.FilteredLogEvent

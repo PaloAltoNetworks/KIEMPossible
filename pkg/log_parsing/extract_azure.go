@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +19,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/monitor/azquery"
 )
 
-// Get logs from Azure for last 7 days using query
+// Get logs from Azure for last 7 days
 func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName string, workspaceID string) (string, error) {
 	client, err := azquery.NewLogsClient(cred, nil)
 	if err != nil {
@@ -26,10 +27,20 @@ func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName strin
 	}
 
 	endTime := time.Now()
-	startTime := endTime.Add(-1 * 24 * time.Hour)
+
+	// Default to 7 days, allow override via environment variable
+	days := 7
+	if envDays := os.Getenv("KIEMPOSSIBLE_LOG_DAYS"); envDays != "" {
+		if parsed, err := strconv.Atoi(envDays); err == nil && parsed > 0 {
+			days = parsed
+		}
+	}
+
+	startTime := endTime.Add(-time.Duration(days) * 24 * time.Hour)
 
 	fmt.Printf("Ingesting Azure Logs from %+v to %+v...\n", startTime, endTime)
 
+	// Create a temporary file for logs
 	tempFile, err := os.CreateTemp("", "azure_logs_*.json")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %v", err)
@@ -37,7 +48,25 @@ func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName strin
 	defer tempFile.Close()
 	writer := bufio.NewWriter(tempFile)
 
-	semaphore := make(chan struct{}, 10)
+	// Concurrency control
+	// Calculate optimal concurrency based on CPU cores (4<=x<=16)
+	numCPU := runtime.NumCPU()
+	maxConcurrency := numCPU * 2
+	if maxConcurrency < 4 {
+		maxConcurrency = 4
+	}
+	if maxConcurrency > 16 {
+		maxConcurrency = 16
+	}
+
+	// Allow override
+	if envMax := os.Getenv("KIEMPOSSIBLE_LOG_CONCURRENCY"); envMax != "" {
+		if parsed, err := strconv.Atoi(envMax); err == nil && parsed > 0 {
+			maxConcurrency = parsed
+		}
+	}
+
+	semaphore := make(chan struct{}, maxConcurrency) // Dynamic concurrency limit
 	var wg sync.WaitGroup
 	errorChan := make(chan error)
 	GlobalProgressBar.Start("cluster log chunks ingested from Azure")
@@ -123,13 +152,6 @@ type objectRef struct {
 func HandleAzureLogs(tempFilePath string, db *sql.DB) {
 	fmt.Println("Processing Azure Logs and attempting to update database...")
 
-	// Get total number of lines in the file
-	totalLines := countLines(tempFilePath)
-	if totalLines == 0 {
-		fmt.Println("No logs to process.")
-		return
-	}
-
 	file, err := os.Open(tempFilePath)
 	if err != nil {
 		fmt.Printf("Error opening temp file: %v\n", err)
@@ -140,7 +162,7 @@ func HandleAzureLogs(tempFilePath string, db *sql.DB) {
 	scanner := bufio.NewScanner(file)
 	userGroups := make(map[string][]string)
 	var updateDataList []UpdateData
-	GlobalProgressBar.Start("cluster events processed", int64(totalLines))
+	GlobalProgressBar.Start("cluster events processed")
 
 	for scanner.Scan() {
 		line := scanner.Text()
