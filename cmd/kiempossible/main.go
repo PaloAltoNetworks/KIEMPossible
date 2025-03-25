@@ -13,4 +13,5 @@ func main() {
 `
 	fmt.Println(banner)
 	Collect()
+	Advise()
 }

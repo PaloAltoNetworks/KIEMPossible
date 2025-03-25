@@ -13,9 +13,10 @@ KIEMPossible is a tool designed to simplify Kubernetes Identity Entitlement Mana
 - `KIEMPossible_darwin [command] [options]` - Run MacOS version, command is the provider name
 - `KIEMPossible [command] [options]` - Run Linux version, command is the provider name
 - `--help or [command] --help` - Help menu for the binary and the individual commands 
-- The concurrency limits for AWS and Azure are dynamic (based on CPU), and static for GCP (due to rate limit) - these can be overrided by setting the `KIEMPOSSIBLE_LOG_CONCURRENCY` environment variable.
-- Log ingestion is set by default to look back 7 days - this can be overridden by setting the `KIEMPOSSIBLE_LOG_DAYS` environment variable.
-- GCP page size for API requesets to Logging API is set at 1,000,000 by default - this can be overridden by setting the `KIEMPOSSIBLE_GCP_PAGE_SIZE` environment variable.
+- The concurrency limits for AWS and Azure are dynamic (based on CPU), and static for GCP (due to rate limit) - these can be changed by setting the `KIEMPOSSIBLE_LOG_CONCURRENCY` environment variable.
+- Log ingestion is set by default to look back 7 days - this can be changed by setting the `KIEMPOSSIBLE_LOG_DAYS` environment variable.
+- GCP page size for API requesets to Logging API is set at 1,000,000 by default - this can be changed by setting the `KIEMPOSSIBLE_GCP_PAGE_SIZE` environment variable.
+- Once ingestion and processing are finished, the tool will output a list of entities with unused permissions over the last 5 days - this can be changed by setting the `KIEMPOSSIBLE_UNUSED_ENTITY_DAYS` environment variable.
 - DISCLAIMER: when ingesting the logs, they are written to a temporary file, and removed once the tool is finished running. Depending on the amount of logs, this may take up substantial space on disk.
 
 ## Requirements
@@ -75,6 +76,9 @@ The database table is structured with the following fields:
 #### Get all permissions which have a record of being used in the observed timespan (7 days by default):
 ```select * from permission where last_used_time is not null;```
 
+#### Get all permissions that have a record and haven't been used for X amount of time:
+```select * from permission where TIMESTAMPDIFF(HOUR, last_used_time, NOW()) > X;```
+
 #### Get all members of a group:
 ```select entity_name from permission where permission_source = "<group-name>" group by entity_name;```
 
@@ -98,6 +102,7 @@ There are still certain blind spots to which we must be vigilant:
 - Logging happens at the API Server level, therfore direct interaction with the Kubelet will not appear in the DB
 - Permissions the tool calculated through logs (Group inheritance and EKS Access Entries) may contain inaccuracies if the permissions were altered within the timeframe of the configured scan (7 days by default)
 - EKS Access Entries for Service-Linked Roles are not currently supported
-- The speed of log ingestion is limited to rate limiting set by the public cloud providers - while the values set worked best for the setup tested, you can modify these by changing the log "chunk" sizes in the code (`pkg/log_parsing/extract_aws.go`, `pkg/log_parsing/extract_azure.go`, and `pkg/log_parsing/extract_gcp.go`). 
-- In GCP, the Logging API has a relatively low rate limit. To tackle this, we set a high `pageSize` for each request sent - this is still not as fast as ingestion for the other cloud providers but works moderately well.
-- Lastly, in GKE logs, the `groups` claim is not displayed. As such, we have no (current) way of handling group inheritance for GKE, meaning the only permissions displayed are those we derive from the bindings within the cluster.
+- For EKS, you will be prompted once your credentials expire to re-enter them in order for the tool to continue running
+- The speed of log ingestion is limited to rate limiting set by the public cloud providers - while the values set worked best for the setup tested, you can modify these by changing the log "chunk" sizes in the code (`pkg/log_parsing/extract_aws.go`, `pkg/log_parsing/extract_azure.go`, and `pkg/log_parsing/extract_gcp.go`)
+- In GCP, the Logging API has a relatively low rate limit. To tackle this, we set a high `pageSize` for each request sent - this is still not as fast as ingestion for the other cloud providers but works moderately well
+- Lastly, in GKE logs, the `groups` claim is not displayed. As such, we have no (current) way of handling group inheritance for GKE, meaning the only permissions displayed are those we derive from the bindings within the cluster

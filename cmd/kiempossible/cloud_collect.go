@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 
 	"github.com/Golansami125/kiempossible/pkg/auth_handling"
 	"github.com/Golansami125/kiempossible/pkg/log_parsing"
@@ -93,4 +95,55 @@ func Collect() {
 			log_parsing.HandleLocalLogs(logEventsFile, DB)
 		}
 	}
+}
+
+func Advise() {
+	fmt.Println("Analyzing results...")
+	DB, err := auth_handling.DBConnect()
+	if err != nil {
+		fmt.Println("Error in DB Connection", err)
+		return
+	}
+	defer DB.Close()
+
+	filterDays := 5
+	if envDays := os.Getenv("KIEMPOSSIBLE_UNUSED_ENTITY_DAYS"); envDays != "" {
+		if parsed, err := strconv.Atoi(envDays); err == nil && parsed > 0 {
+			filterDays = parsed
+		}
+	}
+
+	query := `
+		SELECT entity_type, entity_name, COUNT(*) as unused_count
+		FROM permission
+		WHERE TIMESTAMPDIFF(HOUR, last_used_time, NOW()) > ?*24
+		GROUP BY entity_type, entity_name
+		ORDER BY unused_count DESC
+	`
+
+	rows, err := DB.Query(query, filterDays)
+	if err != nil {
+		fmt.Printf("Error querying database: %v\n", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var entityType, entityName string
+		var unusedCount int
+		err := rows.Scan(&entityType, &entityName, &unusedCount)
+		if err != nil {
+			fmt.Printf("Error scanning row: %v\n", err)
+			continue
+		}
+
+		fmt.Printf("%s %s has %d permissions which are unused for at least %d days\n",
+			entityType, entityName, unusedCount, filterDays)
+	}
+
+	if err = rows.Err(); err != nil {
+		fmt.Printf("Error iterating over rows: %v\n", err)
+	}
+
+	fmt.Println("NOTICE: Only unused permissions observed in the ingestion timerame which are in the scope of KIEMPOSSIBLE_UNUSED_ENTITY_DAYS are shown. Explore the database for more information.")
 }
