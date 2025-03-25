@@ -16,6 +16,7 @@ KIEMPossible is a tool designed to simplify Kubernetes Identity Entitlement Mana
 - The concurrency limits for AWS and Azure are dynamic (based on CPU), and static for GCP (due to rate limit) - these can be overrided by setting the `KIEMPOSSIBLE_LOG_CONCURRENCY` environment variable.
 - Log ingestion is set by default to look back 7 days - this can be overridden by setting the `KIEMPOSSIBLE_LOG_DAYS` environment variable.
 - GCP page size for API requesets to Logging API is set at 1,000,000 by default - this can be overridden by setting the `KIEMPOSSIBLE_GCP_PAGE_SIZE` environment variable.
+- DISCLAIMER: when ingesting the logs, they are written to a temporary file, and removed once the tool is finished running. Depending on the amount of logs, this may take up substantial space on disk.
 
 ## Requirements
 #### AWS
