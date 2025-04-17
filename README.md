@@ -77,7 +77,7 @@ The database table is structured with the following fields:
 ```select * from permission where last_used_time is not null;```
 
 #### Get all permissions that have a record and haven't been used for X amount of time:
-```select * from permission where TIMESTAMPDIFF(HOUR, last_used_time, NOW()) > X;```
+```select * from permission WHERE TIMESTAMPDIFF(HOUR, last_used_time, NOW()) > X*24;```
 
 #### Get all members of a group:
 ```select entity_name from permission where permission_source = "<group-name>" group by entity_name;```
