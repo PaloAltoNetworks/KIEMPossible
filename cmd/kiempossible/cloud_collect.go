@@ -232,5 +232,5 @@ func Advise() {
 		fmt.Printf("Error iterating over rows: %v\n", err)
 	}
 
-	fmt.Println("\nNOTICE: Only unused permissions observed in the ingestion timeframe which are in the scope of KIEMPOSSIBLE_UNUSED_ENTITY_DAYS are shown. Explore the database for more information.")
+	fmt.Println("\nNOTICE: Unused permissions observed in the ingestion timeframe are shown with a last used time. Unused Permissions not observed are shown without. Explore the database for more information.")
 }
