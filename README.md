@@ -4,7 +4,7 @@
   <img src="./rufus.png" width="400" />
 </p>
 
-KIEMPossible is a tool designed to simplify Kubernetes Identity Entitlement Management by allowing visibility of permissions and their usage across the cluster, to allow for real enforcement of the principle of least privilege (don't trust Rufus, he's a mole)
+KIEMPossible is a tool designed to simplify Kubernetes Infrastructure Entitlement Management by allowing visibility of permissions and their usage across the cluster, to allow for real enforcement of the principle of least privilege (don't trust Rufus, he's a mole)
 
 ## Setup and Run
 - `docker-compose up -d` - Spins up a mysql server on a Docker container, accessible at 127.0.0.1:3306 (`mysql -u mysql -p -h 127.0.0.1`, default password is 'mysql'). There is also an optional UI (uncomment in `docker-compose.yml`)
