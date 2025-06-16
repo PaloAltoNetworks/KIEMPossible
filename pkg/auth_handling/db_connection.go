@@ -44,7 +44,17 @@ func ClearDatabase(db *sql.DB) error {
 		return fmt.Errorf("failed to clear table rufus.permission: %v", err)
 	}
 
+	_, err = tx.Exec("DELETE FROM rufus.workload_identities")
+	if err != nil {
+		return fmt.Errorf("failed to clear table rufus.workload_identities: %v", err)
+	}
+
 	_, err = tx.Exec("ALTER TABLE rufus.permission AUTO_INCREMENT = 1")
+	if err != nil {
+		return fmt.Errorf("failed to reset AUTO_INCREMENT: %v", err)
+	}
+
+	_, err = tx.Exec("ALTER TABLE rufus.workload_identities AUTO_INCREMENT = 1")
 	if err != nil {
 		return fmt.Errorf("failed to reset AUTO_INCREMENT: %v", err)
 	}

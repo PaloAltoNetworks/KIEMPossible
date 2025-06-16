@@ -65,6 +65,15 @@ func KubeCollect(clusterName, clusterType string, sess *session.Session, azure_c
 	if err != nil {
 		fmt.Println("Error storing RoleBindings permissions in the database:", err)
 	}
-	return namespaces
 
+	// Collect workloads if flag is set
+	if cred_file.CollectWorkloads {
+		fmt.Printf("\nCollecting workload information...\n")
+		if err := kube_collection.Collect_workloads(clientset, DB); err != nil {
+			fmt.Printf("Failed to collect workloads: %+v\n", err)
+		}
+		fmt.Printf("Workload information collected!\n\n")
+	}
+
+	return namespaces
 }

@@ -1,9 +1,12 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/Golansami125/kiempossible/pkg/auth_handling"
+)
 
 func main() {
-
 	banner := `
 	 _  _____ ___ __  __ ___           _ _    _     
 	| |/ /_ _| __|  \/  | _ \___ _____(_) |__| |___ 
@@ -12,6 +15,12 @@ func main() {
                                                                             
 `
 	fmt.Println(banner)
+	credPath, _, _ := auth_handling.Authenticator()
 	Collect()
-	Advise()
+	if credPath.ShouldAdvise {
+		Advise()
+	}
 }
+
+// TODO
+// Recheck documentation for workload_identities table and logic

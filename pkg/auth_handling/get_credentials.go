@@ -9,11 +9,13 @@ import (
 // Establish command line flows and help for aws, azure, gcp and local. Returns the credential information
 
 type CredentialsPath struct {
-	FilePath     string
-	LogFile      string
-	TenantID     string
-	ClientID     string
-	ClientSecret string
+	FilePath         string
+	LogFile          string
+	TenantID         string
+	ClientID         string
+	ClientSecret     string
+	CollectWorkloads bool
+	ShouldAdvise     bool
 }
 
 type ClusterInfo struct {
@@ -25,21 +27,21 @@ type ClusterInfo struct {
 	Region      string
 }
 
-func AcceptCredentials(awsClusterName, azureTenantID, azureClientID, azureClientSecret, azureClusterName, azureWorkspaceID, azureSubscriptionID, azureResourceGroup, gcpCredentialsFile, gcpClusterName, gcpProjectID, gcpRegion, logFile string) (CredentialsPath, ClusterInfo, error) {
+func AcceptCredentials(awsClusterName, azureTenantID, azureClientID, azureClientSecret, azureClusterName, azureWorkspaceID, azureSubscriptionID, azureResourceGroup, gcpCredentialsFile, gcpClusterName, gcpProjectID, gcpRegion, logFile string, collectWorkloads bool) (CredentialsPath, ClusterInfo, error) {
 	if logFile != "" {
-		return CredentialsPath{LogFile: logFile}, ClusterInfo{}, nil
+		return CredentialsPath{LogFile: logFile, CollectWorkloads: collectWorkloads}, ClusterInfo{}, nil
 	}
 
 	if awsClusterName != "" {
-		return CredentialsPath{}, ClusterInfo{ClusterName: awsClusterName}, nil
+		return CredentialsPath{CollectWorkloads: collectWorkloads}, ClusterInfo{ClusterName: awsClusterName}, nil
 	}
 
 	if azureTenantID != "" && azureClientID != "" && azureClientSecret != "" {
-		return CredentialsPath{TenantID: azureTenantID, ClientID: azureClientID, ClientSecret: azureClientSecret}, ClusterInfo{ClusterName: azureClusterName, WorkspaceID: azureWorkspaceID, Sub: azureSubscriptionID, RG: azureResourceGroup}, nil
+		return CredentialsPath{TenantID: azureTenantID, ClientID: azureClientID, ClientSecret: azureClientSecret, CollectWorkloads: collectWorkloads}, ClusterInfo{ClusterName: azureClusterName, WorkspaceID: azureWorkspaceID, Sub: azureSubscriptionID, RG: azureResourceGroup}, nil
 	}
 
 	if gcpCredentialsFile != "" {
-		return CredentialsPath{FilePath: gcpCredentialsFile}, ClusterInfo{ClusterName: gcpClusterName, ProjectID: gcpProjectID, Region: gcpRegion}, nil
+		return CredentialsPath{FilePath: gcpCredentialsFile, CollectWorkloads: collectWorkloads}, ClusterInfo{ClusterName: gcpClusterName, ProjectID: gcpProjectID, Region: gcpRegion}, nil
 	}
 
 	return CredentialsPath{}, ClusterInfo{}, fmt.Errorf("no valid credentials provided")
@@ -51,6 +53,18 @@ func Authenticator() (CredentialsPath, ClusterInfo, string) {
 	var azureCmd = flag.NewFlagSet("azure", flag.ExitOnError)
 	var gcpCmd = flag.NewFlagSet("gcp", flag.ExitOnError)
 	var localCmd = flag.NewFlagSet("local", flag.ExitOnError)
+
+	// Add collect-workloads flag to all subcommands
+	awsCollectWorkloads := awsCmd.Bool("collect-workloads", false, "[OPTIONAL] Collect workload information")
+	azureCollectWorkloads := azureCmd.Bool("collect-workloads", false, "[OPTIONAL] Collect workload information")
+	gcpCollectWorkloads := gcpCmd.Bool("collect-workloads", false, "[OPTIONAL] Collect workload information")
+	localCollectWorkloads := localCmd.Bool("collect-workloads", false, "[OPTIONAL] Collect workload information")
+
+	// Add advise flag to all subcommands
+	awsAdvise := awsCmd.Bool("advise", false, "[OPTIONAL] Run analysis and provide recommendations")
+	azureAdvise := azureCmd.Bool("advise", false, "[OPTIONAL] Run analysis and provide recommendations")
+	gcpAdvise := gcpCmd.Bool("advise", false, "[OPTIONAL] Run analysis and provide recommendations")
+	localAdvise := localCmd.Bool("advise", false, "[OPTIONAL] Run analysis and provide recommendations")
 
 	awsClusterName := awsCmd.String("cluster-name", "", "AWS cluster name")
 
@@ -113,16 +127,20 @@ func Authenticator() (CredentialsPath, ClusterInfo, string) {
 	switch args[0] {
 	case "aws":
 		cloudProvider = "aws"
-		credentialsPath, clusterInfo, err = AcceptCredentials(*awsClusterName, "", "", "", "", "", "", "", "", "", "", "", "")
+		credentialsPath, clusterInfo, err = AcceptCredentials(*awsClusterName, "", "", "", "", "", "", "", "", "", "", "", "", *awsCollectWorkloads)
+		credentialsPath.ShouldAdvise = *awsAdvise
 	case "azure":
 		cloudProvider = "azure"
-		credentialsPath, clusterInfo, err = AcceptCredentials("", *azureTenantID, *azureClientID, *azureClientSecret, *azureClusterName, *azureWorkspaceID, *azureSubscriptionID, *azureResourceGroup, "", "", "", "", "")
+		credentialsPath, clusterInfo, err = AcceptCredentials("", *azureTenantID, *azureClientID, *azureClientSecret, *azureClusterName, *azureWorkspaceID, *azureSubscriptionID, *azureResourceGroup, "", "", "", "", "", *azureCollectWorkloads)
+		credentialsPath.ShouldAdvise = *azureAdvise
 	case "gcp":
 		cloudProvider = "gcp"
-		credentialsPath, clusterInfo, err = AcceptCredentials("", "", "", "", "", "", "", "", *gcpCredentialsFile, *gcpClusterName, *gcpProjectID, *gcpRegion, "")
+		credentialsPath, clusterInfo, err = AcceptCredentials("", "", "", "", "", "", "", "", *gcpCredentialsFile, *gcpClusterName, *gcpProjectID, *gcpRegion, "", *gcpCollectWorkloads)
+		credentialsPath.ShouldAdvise = *gcpAdvise
 	case "local":
 		cloudProvider = "local"
-		credentialsPath, clusterInfo, err = AcceptCredentials("", "", "", "", "", "", "", "", "", "", "", "", *logFile)
+		credentialsPath, clusterInfo, err = AcceptCredentials("", "", "", "", "", "", "", "", "", "", "", "", *logFile, *localCollectWorkloads)
+		credentialsPath.ShouldAdvise = *localAdvise
 	default:
 		fmt.Println("Error: Invalid cloud provider")
 		os.Exit(1)
