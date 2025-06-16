@@ -16,15 +16,16 @@ KIEMPossible is a tool designed to simplify Kubernetes Infrastructure Entitlemen
 - The concurrency limits for AWS and Azure are dynamic (based on CPU), and static for GCP (due to rate limit) - these can be changed by setting the `KIEMPOSSIBLE_LOG_CONCURRENCY` environment variable.
 - Log ingestion is set by default to look back 7 days - this can be changed by setting the `KIEMPOSSIBLE_LOG_DAYS` environment variable.
 - GCP page size for API requesets to Logging API is set at 1,000,000 by default - this can be changed by setting the `KIEMPOSSIBLE_GCP_PAGE_SIZE` environment variable.
-- Once ingestion and processing are finished, the tool will output a list of entities with unused dangerous permissions.
+- Once ingestion and processing are finished, the tool will output a list of entities with unused dangerous permissions and workloads with dangerous permissions.
 - DISCLAIMER: when ingesting the logs, they are written to a temporary file, and removed once the tool is finished running. Depending on the amount of logs, this may take up substantial space on disk.
 
 ## Requirements
 #### AWS
 - Name of the target cluster
 - Environment variables containing credentials (`AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN`. The region will be set to `us-east-1` by default unless `AWS_REGION` variable is set)
-- Permissions to get EKS credentials (within the cluster permissions to get Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces are required)
+- Permissions to get EKS credentials (within the cluster permissions to get Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces are required) 
 - Audit logging configured for the cluster (`EKS->Cluster->Observability->Manage Logging->Audit`) and permissions to retrieve the logs 
+- For the collect_workloads feature (optional), permissions to retrieve workloads within the cluster are required
 
 #### AZURE
 - Name of the target cluster
@@ -35,6 +36,7 @@ KIEMPossible is a tool designed to simplify Kubernetes Infrastructure Entitlemen
 - Workspace ID of the Log Analytics Workspace which acts as the audit logs destination
 - Permissions to get AKS credentials - at present Local Kubernetes Accounts must be enabled to retrieve the credentials (within the cluster permissions to get Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces are required)
 - Audit logging configured for the cluster (`AKS->Cluster->Monitoring->Diagnostic Settings->Kubernetes Audit`) and permissions to retrieve the logs
+- For the collect_workloads feature (optional), permissions to retrieve workloads within the cluster are required
 
 #### GCP
 - Name of the target cluster
@@ -43,17 +45,19 @@ KIEMPossible is a tool designed to simplify Kubernetes Infrastructure Entitlemen
 - Region in which the cluster is deployed
 - Permissions to get GKE credentials (within the cluster permissions to get Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces are required)
 - Audit logging configured for the cluster (Enabled by default, `GKE->Clusters->Cluster->Features->Logging`) and permissions to retrieve the logs
+- For the collect_workloads feature (optional), permissions to retrieve workloads within the cluster are required
 
 #### Local
 - Name of the target cluster
 - A valid KubeConfig file located at `~/.kube/config`
 - Cluster permissions: get on Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces
 - A valid Audit Log file in the standard Kubernetes format (for more information: https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/)
+- For the collect_workloads feature (optional), permissions to retrieve workloads within the cluster are required
 
 
 ## Basic queries
-#### Database Structure
-The database table is structured with the following fields: 
+### Database Structure
+The main table (permission) is structured with the following fields: 
 - `entity_name` - Name of the entity with the permission
 - `entity_type` - Type of the entity with the permission
 - `api_group` - API Group of the resource
@@ -67,6 +71,15 @@ The database table is structured with the following fields:
 - `last_used_time` - Timestamp of the last usage of the permission within the examined timespan
 - `last_used_resource` - The resource on which the permission was last used within the examined timespan
 
+The second table (workload_identities) is structured with the following fields:
+- `workload_type` - Type of the workload
+- `workload_name` - Name of the workload
+- `service_account_name` - Name of the ServiceAccount used by the workload
+- `original_owner_type` - Type of the owner object of the workload (taken from ownerReferences). In standalone cases or owner objects, this will be the same type as the original workload
+- `original_owner_name` - Name of the owner object of the workload (taken from ownerReferences). In standalone cases or owner objects, this will be the same name as the original workload
+
+
+### Query examples (more complex queries can be seen in the advise() function under cloud_collect.go)
 #### Get all permissions for AWS entities:
 ```select * from permission where entity_name REGEXP '^arn';```
 
@@ -85,12 +98,18 @@ The database table is structured with the following fields:
 #### Get all entities who's permissions originate at a certain binding:
 ```select entity_name from permission where permission_binding = "<binding-name>" group by entity_name;```
 
+#### Get all standalone workloads that use a ServiceAccount
+```select workload_type, workload_name, service_account_name from workload_identities where workload_type=original_owner_type and workload_name=original_owner_name;```
+
+#### Get a list of ServiceAccounts and all of the workloads that use them
+```SELECT service_account_name, GROUP_CONCAT(CONCAT(workload_type, ':', workload_name) ORDER BY workload_type, workload_name SEPARATOR ', ') as workloads FROM rufus.workload_identities GROUP BY service_account_name ORDER BY service_account_name;```
+
 
 ## General Information
 In Kubernetes clusters, we rarely have full visibility into the permissions of each entity. Furthermore, we don't always know about all of the entities that have access altogether.
 KIEMPossible aims to mitigate the majority of this problem, and allow you not only full visibility into the entities with access to your cluster and their permissions, but also to the usage of said permissions. This will allow you to make informed decisions regarding permissioning, allowing you to follow the principle of least privilege without having to worry about breaking workloads or blocking users, thus narrowing the attack surface for potential adversaries.
 So what actually happens when you run KIEMPossible?
-- Retrieval of all the Roles (refers to Roles and ClusterRoles) and Bindings (refers to RoleBindings and ClusterRoleBindings) in the cluster
+- Retrieval of all the Roles (refers to Roles and ClusterRoles) and Bindings (refers to RoleBindings and ClusterRoleBindings) in the cluster. If the `--collect-workloads` flag is set, retrieval of all of the workloads and the ServiceAccounts they use
 - Extraction of all of the Subjects and their matching Roles from the Bindings
 - "Flattening" the permissions for each subject to the lowest possible level (a single verb and scope - for namespaced resources this is either `namespace` or `namespace/resourceName`, for non-namespaced resources this is either `cluster-wide` or `resourceName`). For example, `*` on `pods` at the cluster level, becomes a line per verb applicable to the pods resource, per namespace in the cluster. This also takes into account special verbs which are only applicable to certain resources such as `impersonate` or `bind`. Additionally, top-level resources such as `serviceaccounts` are broken down to their subresources (so in this case the DB would end up with the relevant permissions for `serviceaccount` and for `serviceaccounts/token`). All of this "flattening" is crucial for the comparison of the permission table and the logs, allowing us to handle more specific cases
 - Log ingestion based on the chosen provider. During the log ingestion, group inheritance is handled (check notes for GKE) - this means that users or serviceaccounts which don't get their permissions directly from Bindings but rather through group membership will be mapped to the DB. During this stage, we handle group inheritance for Local, AWS and AZURE clusters. Additionally, we handle EKS Access Entries in order to ensure coverage of entities with permissions gained through this method
