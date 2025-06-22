@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 )
 
-// Connect to AWS using creds file which contains all necessary info
+// Connect to AWS using env vars which contain all necessary info
 func AwsAuth(credentialsPath CredentialsPath) (*session.Session, error) {
 	accessKeyID := os.Getenv("AWS_ACCESS_KEY_ID")
 	secretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
