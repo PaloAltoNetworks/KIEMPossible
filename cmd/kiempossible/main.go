@@ -21,6 +21,3 @@ func main() {
 		Advise()
 	}
 }
-
-// TODO
-// Recheck documentation for workload_identities table and logic
