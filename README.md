@@ -22,7 +22,7 @@ KIEMPossible is a tool designed to simplify Kubernetes Infrastructure Entitlemen
 ## Requirements
 #### AWS
 - Name of the target cluster
-- Environment variables containing credentials (`AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN`. The region will be set to `us-east-1` by default unless `AWS_REGION` variable is set)
+- Environment variables containing credentials (`AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN`. The region will be set to `us-east-1` by default unless `AWS_REGION` variable is set). It is recommended to set the session duration to 12 hours as reauthentication requires you to manually enter new credentials
 - Permissions to get EKS credentials (within the cluster permissions to get Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces are required) 
 - Audit logging configured for the cluster (`EKS->Cluster->Observability->Manage Logging->Audit`) and permissions to retrieve the logs 
 - For the collect_workloads feature (optional), permissions to retrieve workloads within the cluster are required
