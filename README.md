@@ -116,7 +116,8 @@ So what actually happens when you run KIEMPossible?
 
 #### Notes
 There are still certain blind spots to which we must be vigilant:
-- Logging is based on a policy. In self-managed cluster we can control what is logged and thereby control the visibility. In managed clusters, the CSPs control what is logged (for the most part the policy isn't visible to us). As such, there may be gaps in the last_used_time or last_used_resource fields in the DB depending on logging gaps (i.e some last_used_time or last_used_resource may be empty even if the action corresponding to the permission was performed). 
+- Logging is based on a policy. In self-managed cluster we can control what is logged and thereby control the visibility. In managed clusters, the CSPs control what is logged (for the most part the policy isn't visible to us). As such, there may be gaps in the last_used_time or last_used_resource fields in the DB depending on logging gaps (i.e some last_used_time or last_used_resource may be empty even if the action corresponding to the permission was performed)
+- The last used time in the output DB is based on the timestamp that appears in the logs (this may be in a different timezone than your local timezone)
 - A user who's permissions are gained through group inheritance and does not appear in the logs will not appear in the DB
 - Logging happens at the API Server level, therfore direct interaction with the Kubelet will not appear in the DB
 - Permissions the tool calculated through logs (Group inheritance and EKS Access Entries) may contain inaccuracies if the permissions were altered within the timeframe of the configured scan (7 days by default)
@@ -124,4 +125,4 @@ There are still certain blind spots to which we must be vigilant:
 - For EKS, you will be prompted once your credentials expire to re-enter them in order for the tool to continue running
 - The speed of log ingestion is limited to rate limiting set by the public cloud providers - while the values set worked best for the setup tested, you can modify these by changing the log "chunk" sizes in the code (`pkg/log_parsing/extract_aws.go`, `pkg/log_parsing/extract_azure.go`, and `pkg/log_parsing/extract_gcp.go`)
 - In GCP, the Logging API has a relatively low rate limit. To tackle this, we set a high `pageSize` for each request sent - this is still not as fast as ingestion for the other cloud providers but works moderately well
-- Lastly, in GKE logs, the `groups` claim is not displayed. As such, we have no (current) way of handling group inheritance for GKE, meaning the only permissions displayed are those we derive from the bindings within the cluster
+- Lastly, in GKE logs, the `groups` claim is not displayed. As such, we do not (currently) support handling group inheritance for GKE, meaning the only permissions displayed are those we derive from the bindings within the cluster

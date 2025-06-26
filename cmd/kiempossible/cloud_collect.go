@@ -189,7 +189,7 @@ func Advise() {
 	}
 	defer rows.Close()
 
-	fmt.Println("\n\033[31mService Accounts with Risky Permissions\n\033[0m")
+	fmt.Println("\n\033[31mEntities with Risky Permissions\n\033[0m")
 
 	// Process each row
 	for rows.Next() {

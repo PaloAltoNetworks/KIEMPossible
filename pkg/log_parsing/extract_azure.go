@@ -84,7 +84,7 @@ func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName strin
 
 			query := fmt.Sprintf(`
                 AKSAudit
-                | where ResponseStatus.code == 200 and Stage == 'ResponseComplete'
+                | where ResponseStatus.code >= 100 and ResponseStatus.code =< 299 and Stage == 'ResponseComplete'
                 | where TimeGenerated >= datetime(%v)
                 | where TimeGenerated < datetime(%v)
                 | project TimeGenerated, Verb, User, ObjectRef
