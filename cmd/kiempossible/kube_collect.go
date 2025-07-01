@@ -69,7 +69,7 @@ func KubeCollect(clusterName, clusterType string, sess *session.Session, azure_c
 	// Collect workloads if flag is set
 	if cred_file.CollectWorkloads {
 		fmt.Printf("\nCollecting workload information...\n")
-		if err := kube_collection.Collect_workloads(clientset, DB); err != nil {
+		if err := kube_collection.Collect_workloads(clientset, DB, clusterType, clusterName, sess); err != nil {
 			fmt.Printf("Failed to collect workloads: %+v\n", err)
 		}
 		fmt.Printf("Workload information collected!\n\n")

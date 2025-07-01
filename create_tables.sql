@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS rufus.workload_identities (
     workload_type VARCHAR(30) NOT NULL,
     workload_name VARCHAR(100) NOT NULL,
     service_account_name VARCHAR(100) NOT NULL,
+    workload_identity VARCHAR(100) NOT NULL,
     original_owner_type VARCHAR(30) NOT NULL,
     original_owner_name VARCHAR(100) NOT NULL,
     UNIQUE KEY unique_workload (workload_type, workload_name, service_account_name, original_owner_type, original_owner_name)

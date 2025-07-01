@@ -84,11 +84,11 @@ func ExtractAzureLogs(cred *azidentity.ClientSecretCredential, clusterName strin
 
 			query := fmt.Sprintf(`
                 AKSAudit
-                | where ResponseStatus.code >= 100 and ResponseStatus.code =< 299 and Stage == 'ResponseComplete'
+                | where ResponseStatus.code >= 100 and ResponseStatus.code <= 299 and Stage == 'ResponseComplete' and _ResourceId endswith "%v"
                 | where TimeGenerated >= datetime(%v)
                 | where TimeGenerated < datetime(%v)
                 | project TimeGenerated, Verb, User, ObjectRef
-            `, start.Format(time.RFC3339), end.Format(time.RFC3339))
+            `, clusterName, start.Format(time.RFC3339), end.Format(time.RFC3339))
 
 			resp, err := client.QueryWorkspace(context.Background(), workspaceID, azquery.Body{
 				Query: to.Ptr(query),

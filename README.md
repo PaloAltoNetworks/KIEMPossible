@@ -25,16 +25,15 @@ KIEMPossible is a tool designed to simplify Kubernetes Infrastructure Entitlemen
 - Environment variables containing credentials (`AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN`. The region will be set to `us-east-1` by default unless `AWS_REGION` variable is set). It is recommended to set the session duration to 12 hours as reauthentication requires you to manually enter new credentials
 - Permissions to get EKS credentials (within the cluster permissions to get Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces are required) 
 - Audit logging configured for the cluster (`EKS->Cluster->Observability->Manage Logging->Audit`) and permissions to retrieve the logs 
-- For the collect_workloads feature (optional), permissions to retrieve workloads within the cluster are required
+- For the collect_workloads feature (optional), permissions to retrieve workloads within the cluster are required, and permissions to list and describe pod identity associations within AWS are required
 
 #### AZURE
 - Name of the target cluster
-- Valid Service Principal credentials (`client-id, client-secret`)
+- Valid Service Principal credentials (`client-id, client-secret`) with permissions to query the log analytics workspace and permissions to get AKS user credentials (within the cluster permissions to get Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces are required)
 - Name of the Resource Group in which the cluster is deployed
 - Subscription ID of the Subscription in which the cluster is deployed
 - Tenant ID of the tenant to which the subscription belongs
 - Workspace ID of the Log Analytics Workspace which acts as the audit logs destination
-- Permissions to get AKS credentials - at present Local Kubernetes Accounts must be enabled to retrieve the credentials (within the cluster permissions to get Roles, ClusterRoles, RoleBindings, ClusterRoleBindings and Namespaces are required)
 - Audit logging configured for the cluster (`AKS->Cluster->Monitoring->Diagnostic Settings->Kubernetes Audit`) and permissions to retrieve the logs
 - For the collect_workloads feature (optional), permissions to retrieve workloads within the cluster are required
 
@@ -109,7 +108,7 @@ The second table (workload_identities) is structured with the following fields:
 In Kubernetes clusters, we rarely have full visibility into the permissions of each entity. Furthermore, we don't always know about all of the entities that have access altogether.
 KIEMPossible aims to mitigate the majority of this problem, and allow you not only full visibility into the entities with access to your cluster and their permissions, but also to the usage of said permissions. This will allow you to make informed decisions regarding permissioning, allowing you to follow the principle of least privilege without having to worry about breaking workloads or blocking users, thus narrowing the attack surface for potential adversaries.
 So what actually happens when you run KIEMPossible?
-- Retrieval of all the Roles (refers to Roles and ClusterRoles) and Bindings (refers to RoleBindings and ClusterRoleBindings) in the cluster. If the `--collect-workloads` flag is set, retrieval of all of the workloads and the ServiceAccounts they use
+- Retrieval of all the Roles (refers to Roles and ClusterRoles) and Bindings (refers to RoleBindings and ClusterRoleBindings) in the cluster. If the `--collect-workloads` flag is set, retrieval of all of the workloads, ServiceAccounts they use and associated workload identities
 - Extraction of all of the Subjects and their matching Roles from the Bindings
 - "Flattening" the permissions for each subject to the lowest possible level (a single verb and scope - for namespaced resources this is either `namespace` or `namespace/resourceName`, for non-namespaced resources this is either `cluster-wide` or `resourceName`). For example, `*` on `pods` at the cluster level, becomes a line per verb applicable to the pods resource, per namespace in the cluster. This also takes into account special verbs which are only applicable to certain resources such as `impersonate` or `bind`. Additionally, top-level resources such as `serviceaccounts` are broken down to their subresources (so in this case the DB would end up with the relevant permissions for `serviceaccount` and for `serviceaccounts/token`). All of this "flattening" is crucial for the comparison of the permission table and the logs, allowing us to handle more specific cases
 - Log ingestion based on the chosen provider. During the log ingestion, group inheritance is handled (check notes for GKE) - this means that users or serviceaccounts which don't get their permissions directly from Bindings but rather through group membership will be mapped to the DB. During this stage, we handle group inheritance for Local, AWS and AZURE clusters. Additionally, we handle EKS Access Entries in order to ensure coverage of entities with permissions gained through this method
@@ -124,5 +123,6 @@ There are still certain blind spots to which we must be vigilant:
 - EKS Access Entries for Service-Linked Roles are not currently supported
 - For EKS, you will be prompted once your credentials expire to re-enter them in order for the tool to continue running
 - The speed of log ingestion is limited to rate limiting set by the public cloud providers - while the values set worked best for the setup tested, you can modify these by changing the log "chunk" sizes in the code (`pkg/log_parsing/extract_aws.go`, `pkg/log_parsing/extract_azure.go`, and `pkg/log_parsing/extract_gcp.go`)
+- GKE workload identity federation is not currently fully supported - currently only service accounts linked via annotations are supported
 - In GCP, the Logging API has a relatively low rate limit. To tackle this, we set a high `pageSize` for each request sent - this is still not as fast as ingestion for the other cloud providers but works moderately well
 - Lastly, in GKE logs, the `groups` claim is not displayed. As such, we do not (currently) support handling group inheritance for GKE, meaning the only permissions displayed are those we derive from the bindings within the cluster
