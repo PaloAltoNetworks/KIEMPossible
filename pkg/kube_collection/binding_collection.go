@@ -116,12 +116,24 @@ func processResourceType(
 	resourceNames []string,
 	namespace string,
 	subresources map[string]string,
+	allNamespaces []string,
 ) error {
 	ctx.ResourceType = resourceType
 
 	if len(resourceNames) > 0 {
 		return processWithResourceNames(stmt, ctx, verb, resourceNames, namespace, subresources)
 	}
+
+	// If resource is namespaced and namespace is empty, expand to all namespaces
+	if resourceType.Namespaced && namespace == "" {
+		for _, ns := range allNamespaces {
+			if err := processWithoutResourceNames(stmt, ctx, verb, ns, subresources); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	return processWithoutResourceNames(stmt, ctx, verb, namespace, subresources)
 }
 
@@ -178,6 +190,7 @@ func processRule(
 	resourceTypes []ResourceType,
 	namespace string,
 	subresources map[string]string,
+	allNamespaces []string,
 ) error {
 	for _, apiGroup := range rule.APIGroups {
 		for _, resource := range rule.Resources {
@@ -189,8 +202,8 @@ func processRule(
 
 				for _, resourceType := range flattenedTypes {
 					if err := processResourceType(
-						stmt, ctx, resourceType, verb,
-						rule.ResourceNames, namespace, subresources,
+						stmt, ctx, resourceType, resourceType.Verb,
+						rule.ResourceNames, namespace, subresources, allNamespaces,
 					); err != nil {
 						return err
 					}
@@ -256,6 +269,9 @@ func processRoleBinding(
 	resourceTypes []ResourceType,
 	subresources map[string]string,
 ) error {
+	// Build a list of all namespace names (for completeness, though for RoleBindings this is not used)
+	allNamespaces := []string{namespace}
+
 	for _, subject := range rb.Subjects {
 		entityName := subject.Name
 		if subject.Kind == "ServiceAccount" {
@@ -274,7 +290,7 @@ func processRoleBinding(
 			if role, exists := roles[key]; exists {
 				ctx.SourceName = role.Name
 				ctx.SourceType = "Role"
-				if err := processRule(stmt, ctx, role.Rules[0], resourceTypes, namespace, subresources); err != nil {
+				if err := processRule(stmt, ctx, role.Rules[0], resourceTypes, namespace, subresources, allNamespaces); err != nil {
 					return err
 				}
 			}
@@ -282,7 +298,7 @@ func processRoleBinding(
 			if clusterRole, exists := clusterRoles[rb.RoleRef.Name]; exists {
 				ctx.SourceName = clusterRole.Name
 				ctx.SourceType = "ClusterRole"
-				if err := processRule(stmt, ctx, clusterRole.Rules[0], resourceTypes, namespace, subresources); err != nil {
+				if err := processRule(stmt, ctx, clusterRole.Rules[0], resourceTypes, namespace, subresources, allNamespaces); err != nil {
 					return err
 				}
 			}
@@ -348,6 +364,12 @@ func processClusterRoleBinding(
 		return nil
 	}
 
+	// Build a list of all namespace names
+	var allNamespaces []string
+	for _, ns := range namespaces {
+		allNamespaces = append(allNamespaces, ns.Name)
+	}
+
 	for _, subject := range crb.Subjects {
 		entityName := subject.Name
 		if subject.Kind == "ServiceAccount" {
@@ -364,7 +386,7 @@ func processClusterRoleBinding(
 		}
 
 		for _, rule := range clusterRole.Rules {
-			if err := processRule(stmt, ctx, rule, resourceTypes, "", subresources); err != nil {
+			if err := processRule(stmt, ctx, rule, resourceTypes, "", subresources, allNamespaces); err != nil {
 				return err
 			}
 		}

@@ -71,21 +71,22 @@ func ExtractAWSLogs(sess *session.Session, clusterName string) (string, error) {
 	GlobalProgressBar.Start("cluster log chunks ingested from AWS")
 	defer GlobalProgressBar.Stop()
 
-	for start := startTime; start < endTime; start += 12 * 60 * 60 * 1000 {
+	for start := startTime; start < endTime; start += 1 * 60 * 60 * 1000 {
+		chunkEnd := min(start+1*60*60*1000, endTime)
 		wg.Add(1)
 		semaphore <- struct{}{}
-		go func(start int64) {
+		go func(start, chunkEnd int64) {
 			defer wg.Done()
 
 			var nextToken *string
 			for {
 				input := &cloudwatchlogs.FilterLogEventsInput{
 					StartTime:           aws.Int64(start),
-					EndTime:             aws.Int64(min(start+12*60*60*1000, endTime)),
+					EndTime:             aws.Int64(chunkEnd),
 					LogGroupName:        aws.String(logGroupName),
 					LogStreamNamePrefix: aws.String("kube-apiserver-audit-"),
 					NextToken:           nextToken,
-					FilterPattern:       aws.String(`{ $.stage = "ResponseComplete" && $.responseStatus.code = 200 }`),
+					FilterPattern:       aws.String(`{ $.stage = "ResponseComplete" && $.responseStatus.code >= 100 && $.responseStatus.code <= 299 }`),
 				}
 				// Retry with exponential backoff for rate limit
 				filterLogEventsOutput, err := retryWithBackoff(input)
@@ -108,27 +109,27 @@ func ExtractAWSLogs(sess *session.Session, clusterName string) (string, error) {
 				nextToken = filterLogEventsOutput.NextToken
 			}
 			<-semaphore
-		}(start)
+		}(start, chunkEnd)
 	}
 
 	go func() {
 		wg.Wait()
+		writer.Flush() // Ensure all data is written after all goroutines finish
 		close(errorChan)
 	}()
 
-	for {
-		select {
-		case err := <-errorChan:
-			GlobalProgressBar.Stop()
-			println()
-			return "", fmt.Errorf("error occurred during log extraction: %v", err)
-		default:
-			GlobalProgressBar.Stop()
-			println()
-			writer.Flush()
-			return tempFile.Name(), nil
+	var errors []error
+	for err := range errorChan {
+		if err != nil {
+			errors = append(errors, err)
 		}
 	}
+	GlobalProgressBar.Stop()
+	println()
+	if len(errors) > 0 {
+		return "", fmt.Errorf("errors occurred during log extraction: %v", errors)
+	}
+	return tempFile.Name(), nil
 }
 
 func InitSession(sess *session.Session) {

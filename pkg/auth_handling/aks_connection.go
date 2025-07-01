@@ -3,13 +3,15 @@ package auth_handling
 import (
 	"context"
 	"fmt"
-	"os"
 
+	"encoding/base64"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v6"
+	"gopkg.in/yaml.v3"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 func connectToAKS(cred *azidentity.ClientSecretCredential, clusterName, subscription, resourceGroup string) (client *kubernetes.Clientset, err error) {
@@ -29,29 +31,74 @@ func connectToAKS(cred *azidentity.ClientSecretCredential, clusterName, subscrip
 	if err != nil {
 		return nil, err
 	}
-	res, err := clientFactory.NewManagedClustersClient().ListClusterAdminCredentials(context.Background(), resourceGroup, clusterName, &armcontainerservice.ManagedClustersClientListClusterAdminCredentialsOptions{ServerFqdn: nil})
-	if err != nil {
-		return nil, err
-	}
-	kubeConfig := string(res.CredentialResults.Kubeconfigs[0].Value)
-
-	tempFile, err := os.CreateTemp("", "kubeconfig")
-	if err != nil {
-		return nil, err
-	}
-	defer os.Remove(tempFile.Name())
-
-	if _, err := tempFile.Write([]byte(kubeConfig)); err != nil {
-		return nil, err
-	}
-	os.Setenv("KUBECONFIG", tempFile.Name())
-
-	config, err = clientcmd.BuildConfigFromFlags("", tempFile.Name())
+	res, err := clientFactory.NewManagedClustersClient().ListClusterUserCredentials(context.Background(), resourceGroup, clusterName, &armcontainerservice.ManagedClustersClientListClusterUserCredentialsOptions{ServerFqdn: nil})
 	if err != nil {
 		return nil, err
 	}
 
-	clientset, err := kubernetes.NewForConfig(config)
+	kubeConfigBytes := res.CredentialResults.Kubeconfigs[0].Value
+
+	// Parse the kubeconfig
+	var kubeConfig map[string]interface{}
+	if err := yaml.Unmarshal(kubeConfigBytes, &kubeConfig); err != nil {
+		return nil, fmt.Errorf("failed to parse kubeconfig: %v", err)
+	}
+
+	// Extract cluster info
+	clusters := kubeConfig["clusters"].([]interface{})
+	cluster := clusters[0].(map[string]interface{})
+	clusterInfo := cluster["cluster"].(map[string]interface{})
+	server := clusterInfo["server"].(string)
+	caData := clusterInfo["certificate-authority-data"].(string)
+
+	// Extract user info
+	users := kubeConfig["users"].([]interface{})
+	user := users[0].(map[string]interface{})
+	userInfo := user["user"].(map[string]interface{})
+
+	// Extract server-id from exec args for token
+	var serverID string
+	if exec, ok := userInfo["exec"].(map[string]interface{}); ok {
+		if args, ok := exec["args"].([]interface{}); ok {
+			for i, arg := range args {
+				if argStr, ok := arg.(string); ok && argStr == "--server-id" && i+1 < len(args) {
+					if serverIDArg, ok := args[i+1].(string); ok {
+						serverID = serverIDArg
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if serverID == "" {
+		return nil, fmt.Errorf("could not extract server-id from kubeconfig")
+	}
+
+	// Get Azure AD token using the server-id as the audience
+	token, err := cred.GetToken(context.Background(), policy.TokenRequestOptions{
+		Scopes: []string{serverID + "/.default"},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Azure AD token: %v", err)
+	}
+
+	// Decode CA certificate
+	caCert, err := base64.StdEncoding.DecodeString(caData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode CA certificate: %v", err)
+	}
+
+	// Create REST config directly
+	restConfig := &rest.Config{
+		Host: server,
+		TLSClientConfig: rest.TLSClientConfig{
+			CAData: caCert,
+		},
+		BearerToken: token.Token,
+	}
+
+	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		return nil, err
 	}
