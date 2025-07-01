@@ -13,11 +13,11 @@ KIEMPossible is a tool designed to simplify Kubernetes Infrastructure Entitlemen
 - `KIEMPossible_darwin [command] [options]` - Run MacOS version, command is the provider name
 - `KIEMPossible [command] [options]` - Run Linux version, command is the provider name
 - `--help or [command] --help` - Help menu for the binary and the individual commands 
-- The concurrency limits for AWS and Azure are dynamic (based on CPU), and static for GCP (due to rate limit) - these can be changed by setting the `KIEMPOSSIBLE_LOG_CONCURRENCY` environment variable.
-- Log ingestion is set by default to look back 7 days - this can be changed by setting the `KIEMPOSSIBLE_LOG_DAYS` environment variable.
-- GCP page size for API requesets to Logging API is set at 1,000,000 by default - this can be changed by setting the `KIEMPOSSIBLE_GCP_PAGE_SIZE` environment variable.
-- Once ingestion and processing are finished, the tool will output a list of entities with unused dangerous permissions and workloads with dangerous permissions.
-- DISCLAIMER: when ingesting the logs, they are written to a temporary file, and removed once the tool is finished running. Depending on the amount of logs, this may take up substantial space on disk.
+- The concurrency limits for AWS and Azure are dynamic (based on CPU), and static for GCP (due to rate limit) - these can be changed by setting the `KIEMPOSSIBLE_LOG_CONCURRENCY` environment variable
+- Log ingestion is set by default to look back 7 days - this can be changed by setting the `KIEMPOSSIBLE_LOG_DAYS` environment variable
+- GCP page size for API requesets to Logging API is set at 1,000,000 by default - this can be changed by setting the `KIEMPOSSIBLE_GCP_PAGE_SIZE` environment variable
+- Once ingestion and processing are finished, the tool will output a list of entities with unused dangerous permissions and workloads with dangerous permissions
+- DISCLAIMER: when ingesting the logs, they are written to a temporary file, and removed once the tool is finished running. Depending on the amount of logs, this may take up substantial space on disk
 
 ## Requirements
 #### AWS
