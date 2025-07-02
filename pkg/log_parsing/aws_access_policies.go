@@ -21,22 +21,41 @@ func handleEKSAccessPolicy(entityName, reason, clusterName string, sess *session
 			return
 		}
 	}
-	parts := strings.Split(reason, "allowed by ClusterRoleBinding ")
-	if len(parts) < 2 {
+
+	var accessEntryArn string
+	var parseSuccess bool
+
+	if strings.Contains(reason, "allowed by ClusterRoleBinding ") {
+		parts := strings.Split(reason, "allowed by ClusterRoleBinding ")
+		if len(parts) >= 2 {
+			binding := strings.Split(parts[1], " of ClusterRole ")
+			if len(binding) >= 2 {
+				roleBindingParts := strings.Split(binding[0], "+")
+				if len(roleBindingParts) >= 2 {
+					accessEntryArn = strings.Trim(roleBindingParts[0], "\"")
+					parseSuccess = true
+				}
+			}
+		}
+	} else if strings.Contains(reason, "allowed by RoleBinding ") {
+		parts := strings.Split(reason, "allowed by RoleBinding ")
+		if len(parts) >= 2 {
+			binding := strings.Split(parts[1], " of Role ")
+			if len(binding) >= 2 {
+				roleBindingParts := strings.Split(binding[0], "+")
+				if len(roleBindingParts) >= 2 {
+					accessEntryArn = strings.Trim(roleBindingParts[0], "\"")
+					parseSuccess = true
+				}
+			}
+		}
+	}
+
+	if !parseSuccess {
 		// fmt.Printf("Invalid reason format: %v\n", reason)
 		return
 	}
-	binding := strings.Split(parts[1], " of ClusterRole ")
-	if len(binding) < 2 {
-		// fmt.Printf("Invalid reason format: %v\n", reason)
-		return
-	}
-	roleBindingParts := strings.Split(binding[0], "+")
-	if len(roleBindingParts) < 2 {
-		// fmt.Printf("Invalid reason format: %v\n", reason)
-		return
-	}
-	accessEntryArn := strings.Trim(roleBindingParts[0], "\"")
+
 	policyNames, accessScopes := listAssociatedAccessPolicies(clusterName, accessEntryArn, sess)
 	for i, policyName := range policyNames {
 		if policyName == "AmazonEKSClusterAdminPolicy" {
