@@ -17,7 +17,7 @@ KIEMPossible is a tool designed to simplify Kubernetes Infrastructure Entitlemen
 - Log ingestion is set by default to look back 7 days - this can be changed by setting the `KIEMPOSSIBLE_LOG_DAYS` environment variable
 - GCP page size for API requesets to Logging API is set at 1,000,000 by default - this can be changed by setting the `KIEMPOSSIBLE_GCP_PAGE_SIZE` environment variable
 - Once ingestion and processing are finished, the tool will output a list of entities with unused dangerous permissions and workloads with dangerous permissions
-- DISCLAIMER: when ingesting the logs, they are written to a temporary file, and removed once the tool is finished running. Depending on the amount of logs, this may take up substantial space on disk
+- DISCLAIMER: when ingesting the logs, they are written to a temporary file, and removed once the tool is finished running. Depending on the amount of logs, this may take up substantial space on disk for the duration of the tool run
 
 ## Requirements
 #### AWS

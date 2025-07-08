@@ -25,3 +25,5 @@ func main() {
 // Access entries - add support for role bindings (and not just CRB)
 
 // Add workload identity to slides
+
+// Add reauth for access entries

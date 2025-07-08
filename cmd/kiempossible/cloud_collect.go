@@ -111,7 +111,7 @@ func Advise() {
 	query := `
 		SELECT entity_name, entity_type, permission_source, permission_source_type, permission_binding, permission_binding_type, 'Wide secret access permissions' AS risk_reason, last_used_time
 		FROM permission 
-		WHERE resource_type = 'secrets' AND verb IN('get', 'list') AND permission_scope = 'cluster-wide' 
+		WHERE resource_type = 'secrets' AND verb IN('get', 'list') 
 		GROUP BY entity_name, entity_type, permission_source, permission_source_type, permission_binding, permission_binding_type, last_used_time
 
 		UNION ALL
@@ -126,7 +126,7 @@ func Advise() {
 
 		SELECT entity_name, entity_type, permission_source, permission_source_type, permission_binding, permission_binding_type, 'serviceaccount token creation permissions' AS risk_reason, last_used_time
 		FROM permission 
-		WHERE resource_type = 'serviceaccounts/token' AND verb = 'create' AND permission_scope = 'cluster-wide' 
+		WHERE resource_type = 'serviceaccounts/token' AND verb = 'create'
 		GROUP BY entity_name, entity_type, permission_source, permission_source_type, permission_binding, permission_binding_type, last_used_time
 
 		UNION ALL
@@ -160,7 +160,7 @@ func Advise() {
 		SELECT entity_name, entity_type, permission_source, permission_source_type, permission_binding, permission_binding_type, 'Workload creation permissions' AS risk_reason, last_used_time
 		FROM permission 
 		WHERE resource_type IN ('pods', 'deployments', 'statefulsets', 'replicasets', 'daemonsets', 'jobs', 'cronjobs') 
-		AND verb = 'create' AND permission_scope IN('cluster-wide', 'kube-system') 
+		AND verb = 'create'
 		GROUP BY entity_name, entity_type, permission_source, permission_source_type, permission_binding, permission_binding_type, last_used_time
 
 		UNION ALL
@@ -201,10 +201,10 @@ func Advise() {
 			permissionBinding     string
 			permissionBindingType string
 			riskReason            string
-			lastUsedTime          sql.NullTime
+			lastUsedTimeRaw       sql.RawBytes
 		)
 
-		err := rows.Scan(&entityName, &entityType, &permissionSource, &permissionSourceType, &permissionBinding, &permissionBindingType, &riskReason, &lastUsedTime)
+		err := rows.Scan(&entityName, &entityType, &permissionSource, &permissionSourceType, &permissionBinding, &permissionBindingType, &riskReason, &lastUsedTimeRaw)
 		if err != nil {
 			fmt.Printf("Error scanning row: %v\n", err)
 			continue
@@ -212,11 +212,18 @@ func Advise() {
 
 		riskReason = strings.ToUpper(riskReason)
 
-		if !lastUsedTime.Valid {
+		if len(lastUsedTimeRaw) == 0 {
 			fmt.Printf("[WARN] %s %s had %s unused in the observed period (%s %s bound by %s %s)\n\n",
 				entityType, entityName, riskReason, permissionSource, permissionSourceType, permissionBinding, permissionBindingType)
 		} else {
-			unusedDuration := time.Since(lastUsedTime.Time)
+			lastUsedTimeStr := string(lastUsedTimeRaw)
+			t, err := time.Parse("2006-01-02 15:04:05", lastUsedTimeStr)
+			if err != nil {
+				fmt.Printf("[WARN] %s %s had %s (last used time: %s, parse error: %v) (%s %s bound by %s %s)\n\n",
+					entityType, entityName, riskReason, lastUsedTimeStr, err, permissionSource, permissionSourceType, permissionBinding, permissionBindingType)
+				continue
+			}
+			unusedDuration := time.Since(t)
 			days := int(unusedDuration.Hours() / 24)
 			hours := int(unusedDuration.Hours())
 

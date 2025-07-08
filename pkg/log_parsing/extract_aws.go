@@ -155,11 +155,11 @@ func UpdateSession(sess *session.Session) {
 	sessionCond.Broadcast()
 }
 
-func isThrottlingError(err error) bool {
+func IsThrottlingError(err error) bool {
 	return strings.Contains(err.Error(), "ThrottlingException")
 }
 
-func isExpiredCredentialsError(err error) bool {
+func IsExpiredCredentialsError(err error) bool {
 	return strings.Contains(err.Error(), "ExpiredToken") || strings.Contains(err.Error(), "AccessDenied")
 }
 
@@ -181,14 +181,14 @@ func retryWithBackoff(input *cloudwatchlogs.FilterLogEventsInput) (*cloudwatchlo
 			return result, nil
 		}
 
-		if isThrottlingError(err) {
+		if IsThrottlingError(err) {
 			sleepTime := time.Duration((1<<attempt)*100+rand.Intn(100)) * time.Millisecond
 			fmt.Printf("Throttling detected, retrying in %v...\n", sleepTime)
 			time.Sleep(sleepTime)
 			continue
 		}
 
-		if isExpiredCredentialsError(err) {
+		if IsExpiredCredentialsError(err) {
 			sessionMutex.Lock()
 
 			if sessionRef == nil {
@@ -202,7 +202,7 @@ func retryWithBackoff(input *cloudwatchlogs.FilterLogEventsInput) (*cloudwatchlo
 			sessionRef = nil
 			sessionMutex.Unlock()
 
-			if err := reauthenticate(); err != nil {
+			if err := Reauthenticate(); err != nil {
 				return nil, err
 			}
 
@@ -215,7 +215,7 @@ func retryWithBackoff(input *cloudwatchlogs.FilterLogEventsInput) (*cloudwatchlo
 	return nil, fmt.Errorf("max retries exceeded")
 }
 
-func reauthenticate() error {
+func Reauthenticate() error {
 	authMutex := &sync.Mutex{}
 	authMutex.Lock()
 	defer authMutex.Unlock()

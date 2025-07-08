@@ -3,7 +3,9 @@ package log_parsing
 import (
 	"database/sql"
 	"fmt"
+	"math/rand"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -12,6 +14,44 @@ import (
 )
 
 var processedEntities []string
+
+func retryEKSWithBackoff(input *eks.ListAssociatedAccessPoliciesInput) (*eks.ListAssociatedAccessPoliciesOutput, error) {
+	var attempt int
+	for attempt = 0; attempt < 5; attempt++ {
+		eksSvc := eks.New(GetSession())
+		result, err := eksSvc.ListAssociatedAccessPolicies(input)
+		if err == nil {
+			return result, nil
+		}
+		if IsThrottlingError(err) { // Use the exported version
+			sleepTime := time.Duration((1<<attempt)*100+rand.Intn(100)) * time.Millisecond
+			fmt.Printf("Throttling detected, retrying in %v...\n", sleepTime)
+			time.Sleep(sleepTime)
+			continue
+		}
+		if IsExpiredCredentialsError(err) {
+			// Session management as in extract_aws.go
+			sessionMutex.Lock()
+			if sessionRef == nil {
+				sessionCond.Wait()
+				sessionMutex.Unlock()
+				attempt = 0
+				continue
+			}
+			GlobalProgressBar.Pause()
+			sessionRef = nil
+			sessionMutex.Unlock()
+			if err := Reauthenticate(); err != nil {
+				return nil, err
+			}
+			GlobalProgressBar.Resume()
+			attempt = 0
+			continue
+		}
+		return nil, err
+	}
+	return nil, fmt.Errorf("max retries exceeded")
+}
 
 // accessPolicy flow to handle EKS Access Policy
 func handleEKSAccessPolicy(entityName, reason, clusterName string, sess *session.Session, db *sql.DB, namespaces *v1.NamespaceList) {
@@ -52,11 +92,10 @@ func handleEKSAccessPolicy(entityName, reason, clusterName string, sess *session
 	}
 
 	if !parseSuccess {
-		// fmt.Printf("Invalid reason format: %v\n", reason)
 		return
 	}
 
-	policyNames, accessScopes := listAssociatedAccessPolicies(clusterName, accessEntryArn, sess)
+	policyNames, accessScopes := listAssociatedAccessPolicies(clusterName, accessEntryArn)
 	for i, policyName := range policyNames {
 		if policyName == "AmazonEKSClusterAdminPolicy" {
 			handleEKSClusterAdminPolicy(entityName, accessEntryArn, accessScopes[i], namespaces, db)
@@ -83,15 +122,13 @@ func handleEKSAccessPolicy(entityName, reason, clusterName string, sess *session
 }
 
 // List the access policies associated with the entry
-func listAssociatedAccessPolicies(clusterName, principalArn string, sess *session.Session) ([]string, []string) {
-	eksSvc := eks.New(sess)
+func listAssociatedAccessPolicies(clusterName, principalArn string) ([]string, []string) {
 	input := &eks.ListAssociatedAccessPoliciesInput{
 		ClusterName:  aws.String(clusterName),
 		PrincipalArn: aws.String(principalArn),
 	}
-	result, err := eksSvc.ListAssociatedAccessPolicies(input)
+	result, err := retryEKSWithBackoff(input)
 	if err != nil {
-		fmt.Println("Error listing associated access policies:", err)
 		return nil, nil
 	}
 

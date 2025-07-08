@@ -290,16 +290,20 @@ func processRoleBinding(
 			if role, exists := roles[key]; exists {
 				ctx.SourceName = role.Name
 				ctx.SourceType = "Role"
-				if err := processRule(stmt, ctx, role.Rules[0], resourceTypes, namespace, subresources, allNamespaces); err != nil {
-					return err
+				for _, rule := range role.Rules {
+					if err := processRule(stmt, ctx, rule, resourceTypes, namespace, subresources, allNamespaces); err != nil {
+						return err
+					}
 				}
 			}
 		} else if rb.RoleRef.Kind == "ClusterRole" {
 			if clusterRole, exists := clusterRoles[rb.RoleRef.Name]; exists {
 				ctx.SourceName = clusterRole.Name
 				ctx.SourceType = "ClusterRole"
-				if err := processRule(stmt, ctx, clusterRole.Rules[0], resourceTypes, namespace, subresources, allNamespaces); err != nil {
-					return err
+				for _, rule := range clusterRole.Rules {
+					if err := processRule(stmt, ctx, rule, resourceTypes, namespace, subresources, allNamespaces); err != nil {
+						return err
+					}
 				}
 			}
 		}
