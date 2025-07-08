@@ -103,10 +103,10 @@ The second table (workload_identities) is structured with the following fields:
 #### Get a list of ServiceAccounts that are used by workloads and all of the workloads that use them
 ```SELECT service_account_name, GROUP_CONCAT(CONCAT(workload_type, ':', workload_name) ORDER BY workload_type, workload_name SEPARATOR ', ') as workloads FROM rufus.workload_identities GROUP BY service_account_name ORDER BY service_account_name;```
 
-### Get all of the entities in the cluster by order of the amount of individual permissions they have
+#### Get all of the entities in the cluster by order of the amount of individual permissions they have
 ```select entity_name, entity_type, count(*) as number_of_permissions from permission group by entity_name, entity_type ORDER BY number_of_permissions;```
 
-### Get a list of ServiceAccounts that are used by workloads and all of the workloads that use them by order of the amount of individual permissions they have
+#### Get a list of ServiceAccounts that are used by workloads and all of the workloads that use them by order of the amount of individual permissions they have
 ```SELECT a.service_account_name, a.workloads, b.number_of_permissions FROM(SELECT service_account_name, GROUP_CONCAT(CONCAT(workload_type, ':', workload_name) ORDER BY workload_type, workload_name SEPARATOR ', ') as workloads FROM rufus.workload_identities GROUP BY service_account_name ORDER BY service_account_name) AS a JOIN (select entity_name, count(*) as number_of_permissions from permission group by entity_name) AS b ON a.service_account_name = b.entity_name ORDER BY b.number_of_permissions;```
 
 #### Get all entities with potentially risky permissions
