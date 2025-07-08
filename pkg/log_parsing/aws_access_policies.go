@@ -23,14 +23,13 @@ func retryEKSWithBackoff(input *eks.ListAssociatedAccessPoliciesInput) (*eks.Lis
 		if err == nil {
 			return result, nil
 		}
-		if IsThrottlingError(err) { // Use the exported version
+		if IsThrottlingError(err) {
 			sleepTime := time.Duration((1<<attempt)*100+rand.Intn(100)) * time.Millisecond
 			fmt.Printf("Throttling detected, retrying in %v...\n", sleepTime)
 			time.Sleep(sleepTime)
 			continue
 		}
 		if IsExpiredCredentialsError(err) {
-			// Session management as in extract_aws.go
 			sessionMutex.Lock()
 			if sessionRef == nil {
 				sessionCond.Wait()
