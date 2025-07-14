@@ -272,7 +272,7 @@ func Advise() {
 
 				SELECT entity_name, 'serviceaccount token creation permissions' AS risk_reason
 				FROM permission 
-				WHERE resource_type = 'serviceaccounts/token' AND verb = 'create' AND permission_scope = 'cluster-wide' 
+				WHERE resource_type = 'serviceaccounts/token' AND verb = 'create'
 				GROUP BY entity_name
 
 				UNION ALL
