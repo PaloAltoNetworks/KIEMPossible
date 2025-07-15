@@ -1,7 +1,7 @@
 # KIEMPossible
 
 <p align="center">
-  <img src="./rufus.png" width="400" />
+  <img src="./logo.png" width="400" />
 </p>
 
 KIEMPossible is a tool designed to simplify Kubernetes Infrastructure Entitlement Management by allowing visibility of permissions and their usage across the cluster, to allow for real enforcement of the principle of least privilege (don't trust Rufus, he's a mole)
