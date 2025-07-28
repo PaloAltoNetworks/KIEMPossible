@@ -21,3 +21,13 @@ func main() {
 		Advise()
 	}
 }
+
+// Imporvements - add GCP workload identity for ALL cases
+
+// Access entries - add support for role bindings (and not just CRB)
+
+// Potential additions:
+// - automated remediation/suggest new role/binding based on usage etc
+// - historical trends, reporting etc
+// - policy-as-code integration, for example OPA for enforcing
+// - add support for rancher/openshift/ibm cloud/oci
