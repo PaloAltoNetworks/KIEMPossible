@@ -21,7 +21,3 @@ func main() {
 		Advise()
 	}
 }
-
-// Access entries - add support for role bindings (and not just CRB)
-
-// Add workload identity to slides

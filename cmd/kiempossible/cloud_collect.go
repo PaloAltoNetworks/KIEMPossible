@@ -3,8 +3,11 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 	"time"
+
+	"encoding/json"
 
 	"github.com/Golansami125/kiempossible/pkg/auth_handling"
 	"github.com/Golansami125/kiempossible/pkg/log_parsing"
@@ -99,7 +102,16 @@ func Collect() {
 }
 
 func Advise() {
-	fmt.Printf("\n\n\033[31m----------------------------\n----------------------------\n     Analyzing results\n----------------------------\n----------------------------\033[0m\n\n")
+	fmt.Println("\n\033[31mPreparing output report...\033[0m")
+	currentDate := time.Now().Format("20060102")
+	filename := fmt.Sprintf("kiempossible_report_%s.json", currentDate)
+	file, err := os.Create(filename)
+	if err != nil {
+		fmt.Printf("Error creating report file: %v\n", err)
+		return
+	}
+	defer file.Close()
+
 	DB, err := auth_handling.DBConnect()
 	if err != nil {
 		fmt.Println("Error in DB Connection", err)
@@ -107,7 +119,10 @@ func Advise() {
 	}
 	defer DB.Close()
 
-	// Query for unused permissions with risk reasons
+	report := make(map[string]interface{})
+
+	// Section 1: Entities with Risky Permissions
+	riskyPermissions := []map[string]interface{}{}
 	query := `
 		SELECT entity_name, entity_type, permission_source, permission_source_type, permission_binding, permission_binding_type, 'Wide secret access permissions' AS risk_reason, last_used_time
 		FROM permission 
@@ -181,7 +196,6 @@ func Advise() {
 		ORDER BY entity_name, entity_type, risk_reason
 	`
 
-	// Execute the query
 	rows, err := DB.Query(query)
 	if err != nil {
 		fmt.Printf("Error querying database: %v\n", err)
@@ -189,9 +203,6 @@ func Advise() {
 	}
 	defer rows.Close()
 
-	fmt.Println("\n\033[31mEntities with Risky Permissions\n\033[0m")
-
-	// Process each row
 	for rows.Next() {
 		var (
 			entityName            string
@@ -211,45 +222,50 @@ func Advise() {
 		}
 
 		riskReason = strings.ToUpper(riskReason)
-
+		lastUsed := ""
 		if len(lastUsedTimeRaw) == 0 {
-			fmt.Printf("[WARN] %s %s had %s unused in the observed period (%s %s bound by %s %s)\n\n",
-				entityType, entityName, riskReason, permissionSource, permissionSourceType, permissionBinding, permissionBindingType)
+			lastUsed = "UNUSED in the observed period"
 		} else {
 			lastUsedTimeStr := string(lastUsedTimeRaw)
 			t, err := time.Parse("2006-01-02 15:04:05", lastUsedTimeStr)
 			if err != nil {
-				fmt.Printf("[WARN] %s %s had %s (last used time: %s, parse error: %v) (%s %s bound by %s %s)\n\n",
-					entityType, entityName, riskReason, lastUsedTimeStr, err, permissionSource, permissionSourceType, permissionBinding, permissionBindingType)
-				continue
-			}
-			unusedDuration := time.Since(t)
-			days := int(unusedDuration.Hours() / 24)
-			hours := int(unusedDuration.Hours())
-
-			if days >= 1 {
-				fmt.Printf("[WARN] %s %s had %s unused for at least %d days (%s %s bound by %s %s)\n\n",
-					entityType, entityName, riskReason, days, permissionSource, permissionSourceType, permissionBinding, permissionBindingType)
+				lastUsed = "Parse error: " + lastUsedTimeStr
 			} else {
-				fmt.Printf("[WARN] %s %s had %s unused for at least %d hours (%s %s bound by %s %s)\n\n",
-					entityType, entityName, riskReason, hours, permissionSource, permissionSourceType, permissionBinding, permissionBindingType)
+				unusedDuration := time.Since(t)
+				days := int(unusedDuration.Hours() / 24)
+				hours := int(unusedDuration.Hours())
+				if days >= 1 {
+					lastUsed = fmt.Sprintf("UNUSED for at least %d days", days)
+				} else {
+					lastUsed = fmt.Sprintf("UNUSED for at least %d hours", hours)
+				}
 			}
 		}
+		row := map[string]interface{}{
+			"entity_name":                       entityName,
+			"entity_type":                       entityType,
+			"permission_source":                 permissionSource,
+			"permission_source_type":            permissionSourceType,
+			"permission_binding":                permissionBinding,
+			"permission_binding_type":           permissionBindingType,
+			"risk_reason":                       riskReason,
+			"last_used_time_or_unused_duration": lastUsed,
+		}
+		riskyPermissions = append(riskyPermissions, row)
 	}
-
 	if err = rows.Err(); err != nil {
 		fmt.Printf("Error iterating over rows: %v\n", err)
 	}
+	report["risky_permissions"] = riskyPermissions
 
-	// Check if the workload_identities table has data
+	// Section 2: Workloads using Service Accounts with Risky Permissions
 	var count int
 	err = DB.QueryRow("SELECT COUNT(*) FROM rufus.workload_identities").Scan(&count)
 	if err != nil {
 		fmt.Printf("Error checking workload_identities table: %v\n", err)
 		return
 	}
-
-	// Find workloads using service accounts with risky permissions
+	workloads := []map[string]interface{}{}
 	if count != 0 {
 		workloadQuery := `
 		WITH risky_permissions AS (
@@ -327,19 +343,13 @@ func Advise() {
 		FROM rufus.workload_identities w
 		INNER JOIN risky_permissions rp ON w.service_account_name = rp.entity_name
 		ORDER BY w.workload_type, w.workload_name
-	`
-
-		// Execute the query
+		`
 		workloadRows, err := DB.Query(workloadQuery)
 		if err != nil {
 			fmt.Printf("Error querying workload database: %v\n", err)
 			return
 		}
 		defer workloadRows.Close()
-
-		fmt.Println("\n\033[31mWorkloads using Service Accounts with Risky Permissions\n\033[0m")
-
-		// Process each row
 		for workloadRows.Next() {
 			var (
 				workloadType       string
@@ -347,21 +357,124 @@ func Advise() {
 				serviceAccountName string
 				riskReason         string
 			)
-
 			err := workloadRows.Scan(&workloadType, &workloadName, &serviceAccountName, &riskReason)
 			if err != nil {
 				fmt.Printf("Error scanning workload row: %v\n", err)
 				continue
 			}
-
-			fmt.Printf("[WARN] %s %s uses ServiceAccount %s which had %s\n\n",
-				workloadType, workloadName, serviceAccountName, strings.ToUpper(riskReason))
+			row := map[string]interface{}{
+				"workload_type":        workloadType,
+				"workload_name":        workloadName,
+				"service_account_name": serviceAccountName,
+				"risk_reason":          strings.ToUpper(riskReason),
+			}
+			workloads = append(workloads, row)
 		}
-
 		if err = workloadRows.Err(); err != nil {
 			fmt.Printf("Error iterating over workload rows: %v\n", err)
 		}
 	}
+	report["workloads_with_risky_permissions"] = workloads
 
-	fmt.Println("\n\033[31mNOTICE\033[0m: Unused permissions observed in the ingestion timeframe are shown with a last used time. \nUnused Permissions not observed are shown without. Explore the database for more information.")
+	// Section 3: Roles where all permissions are unused
+	unusedRoles := []map[string]interface{}{}
+	rolesQuery := `
+		SELECT 
+			permission_source AS rbac_object,
+			permission_source_type AS rbac_type,
+			COUNT(*) AS unused_permission_count
+		FROM permission
+		WHERE (last_used_time IS NULL OR last_used_time < (NOW() - INTERVAL 7 DAY))
+		  AND permission_source_type IN ('Role', 'ClusterRole')
+		  AND permission_source NOT IN (
+			  SELECT permission_source
+			  FROM permission
+			  WHERE last_used_time >= (NOW() - INTERVAL 7 DAY)
+				AND permission_source_type IN ('Role', 'ClusterRole')
+		  )
+		GROUP BY permission_source, permission_source_type
+		ORDER BY unused_permission_count DESC
+	`
+	rolesRows, err := DB.Query(rolesQuery)
+	if err != nil {
+		fmt.Printf("Error querying unused roles: %v\n", err)
+		return
+	}
+	defer rolesRows.Close()
+	for rolesRows.Next() {
+		var rbacObject, rbacType string
+		var unusedCount int
+		err := rolesRows.Scan(&rbacObject, &rbacType, &unusedCount)
+		if err != nil {
+			fmt.Printf("Error scanning unused roles row: %v\n", err)
+			continue
+		}
+		row := map[string]interface{}{
+			"role_name":               rbacObject,
+			"role_type":               rbacType,
+			"unused_permission_count": unusedCount,
+		}
+		unusedRoles = append(unusedRoles, row)
+	}
+	if err = rolesRows.Err(); err != nil {
+		fmt.Printf("Error iterating over unused roles rows: %v\n", err)
+	}
+	report["unused_roles"] = unusedRoles
+
+	// Section 4: Bindings where all permissions are unused
+	unusedBindings := []map[string]interface{}{}
+	bindingsQuery := `
+		SELECT 
+			permission_binding AS rbac_object,
+			permission_binding_type AS rbac_type,
+			COUNT(*) AS unused_permission_count
+		FROM permission
+		WHERE (last_used_time IS NULL OR last_used_time < (NOW() - INTERVAL 7 DAY))
+		  AND permission_binding_type IN ('RoleBinding', 'ClusterRoleBinding')
+		  AND permission_binding NOT IN (
+			  SELECT permission_binding
+			  FROM permission
+			  WHERE last_used_time >= (NOW() - INTERVAL 7 DAY)
+				AND permission_binding_type IN ('RoleBinding', 'ClusterRoleBinding')
+		  )
+		GROUP BY permission_binding, permission_binding_type
+		ORDER BY unused_permission_count DESC
+	`
+	bindingsRows, err := DB.Query(bindingsQuery)
+	if err != nil {
+		fmt.Printf("Error querying unused bindings: %v\n", err)
+		return
+	}
+	defer bindingsRows.Close()
+	for bindingsRows.Next() {
+		var rbacObject, rbacType string
+		var unusedCount int
+		err := bindingsRows.Scan(&rbacObject, &rbacType, &unusedCount)
+		if err != nil {
+			fmt.Printf("Error scanning unused bindings row: %v\n", err)
+			continue
+		}
+		row := map[string]interface{}{
+			"binding_name":            rbacObject,
+			"binding_type":            rbacType,
+			"unused_permission_count": unusedCount,
+		}
+		unusedBindings = append(unusedBindings, row)
+	}
+	if err = bindingsRows.Err(); err != nil {
+		fmt.Printf("Error iterating over unused bindings rows: %v\n", err)
+	}
+	report["unused_bindings"] = unusedBindings
+
+	// Write JSON to file
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	err = encoder.Encode(report)
+	if err != nil {
+		fmt.Printf("Error writing JSON report: %v\n", err)
+		return
+	}
+
+	// Print notice to screen
+	fmt.Println("\n\033[31mNOTICE: Unused permissions observed in the ingestion timeframe are shown with a last used time. Unused Permissions not observed are shown without. Explore the database for more information.\033[0m")
 }
