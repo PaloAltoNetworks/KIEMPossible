@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Golansami125/kiempossible/pkg/log_parsing"
+	"github.com/PaloAltoNetworks/KIEMPossible/pkg/log_parsing"
 	v1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

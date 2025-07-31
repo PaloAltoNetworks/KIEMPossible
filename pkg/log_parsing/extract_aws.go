@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Golansami125/kiempossible/pkg/auth_handling"
+	"github.com/PaloAltoNetworks/KIEMPossible/pkg/auth_handling"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"

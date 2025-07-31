@@ -9,8 +9,8 @@ import (
 
 	"encoding/json"
 
-	"github.com/Golansami125/kiempossible/pkg/auth_handling"
-	"github.com/Golansami125/kiempossible/pkg/log_parsing"
+	"github.com/PaloAltoNetworks/KIEMPossible/pkg/auth_handling"
+	"github.com/PaloAltoNetworks/KIEMPossible/pkg/log_parsing"
 )
 
 // Handling log collection and processing from different cloud providers

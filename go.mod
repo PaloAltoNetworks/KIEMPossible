@@ -1,4 +1,4 @@
-module github.com/Golansami125/kiempossible
+module github.com/PaloAltoNetworks/KIEMPossible
 
 go 1.23.0
 

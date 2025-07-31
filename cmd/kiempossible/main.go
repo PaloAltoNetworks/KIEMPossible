@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/Golansami125/kiempossible/pkg/auth_handling"
+	"github.com/PaloAltoNetworks/KIEMPossible/pkg/auth_handling"
 )
 
 func main() {

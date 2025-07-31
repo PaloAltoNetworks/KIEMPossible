@@ -6,8 +6,8 @@ import (
 	"os"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	"github.com/Golansami125/kiempossible/pkg/auth_handling"
-	"github.com/Golansami125/kiempossible/pkg/kube_collection"
+	"github.com/PaloAltoNetworks/KIEMPossible/pkg/auth_handling"
+	"github.com/PaloAltoNetworks/KIEMPossible/pkg/kube_collection"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"golang.org/x/oauth2/google"
 	v1 "k8s.io/api/core/v1"
